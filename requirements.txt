@@ -1,5 +1,2 @@
-python-telegram-bot==20.7
-opencv-python
-pytesseract
-numpy
-Pillow
+python-telegram-bot
+python-dotenv
