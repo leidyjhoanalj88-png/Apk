@@ -1,1 +1,8 @@
-. 
+__pycache__/
+*.pyc
+.venv/
+.env
+
+screen.png
+current_screen.png
+debug_process.png
