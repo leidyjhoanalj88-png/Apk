@@ -31,44 +31,51 @@ def activar_vip(user_id, dias):
     expira = datetime.now() + timedelta(days=dias)
     usuarios_vip[user_id] = expira
 
-# ================= NEQUI (CON API + FALLBACK) =================
+# ================= MULTI API NEQUI =================
 def consultar_nequi(numero):
-    try:
-        import requests
+    import requests
 
-        url = "https://extract.nequialpha.com/consultar"
+    apis = [
+        {
+            "url": "https://extract.nequialpha.com/consultar",
+            "headers": {
+                "X-Api-Key": "M43289032FH23B",
+                "Content-Type": "application/json"
+            },
+            "payload": {"telefono": str(numero)},
+            "method": "POST"
+        },
+        # 👉 puedes agregar más APIs aquí
+    ]
 
-        headers = {
-            "X-Api-Key": "M43289032FH23B",
-            "Content-Type": "application/json"
-        }
+    for api in apis:
+        try:
+            if api["method"] == "POST":
+                r = requests.post(api["url"], json=api["payload"], headers=api["headers"], timeout=10)
+            else:
+                r = requests.get(api["url"], timeout=10)
 
-        payload = {"telefono": str(numero)}
+            if r.status_code == 200:
+                data = r.json()
 
-        r = requests.post(url, json=payload, headers=headers, timeout=15)
+                nombre = data.get("nombre") or data.get("titular")
 
-        if r.status_code == 200:
-            data = r.json()
+                if nombre:
+                    return {
+                        "numero": numero,
+                        "titular": nombre,
+                        "estado": "OK"
+                    }
 
-            return {
-                "numero": numero,
-                "titular": data.get("nombre", "No encontrado"),
-                "estado": "OK"
-            }
+        except:
+            continue
 
-        else:
-            return {
-                "numero": numero,
-                "titular": "Error API",
-                "estado": "FALLBACK"
-            }
-
-    except Exception:
-        return {
-            "numero": numero,
-            "titular": "Error conexión",
-            "estado": "FALLBACK"
-        }
+    # 💀 FALLBACK
+    return {
+        "numero": numero,
+        "titular": "No disponible",
+        "estado": "Sistema protegido"
+    }
 
 # ================= COMANDOS =================
 
@@ -90,9 +97,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💀 Modo: SIGILOSO
 ━━━━━━━━━━━━━━━━━━━━━━━
 
+⚔️ COMANDOS
+
 🔎 /nequi ➛ Extraer información
 🔑 /vip ➛ Activar acceso
-📊 /miacceso ➛ Estado
+📊 /miacceso ➛ Estado VIP
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ Sistema protegido
@@ -120,11 +129,6 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = consultar_nequi(numero)
 
-    # 🔥 OCULTAR ERRORES (FALLBACK PRO)
-    if data["estado"] != "OK":
-        data["titular"] = "No disponible"
-        data["estado"] = "Sistema protegido"
-
     await msg.edit_text(
         f"""
 ╔══════════════════════════════╗
@@ -148,7 +152,7 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     )
 
-# 🔑 VIP
+# 🔑 ACTIVAR VIP
 async def vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -185,7 +189,7 @@ async def miacceso(update: Update, context: ContextTypes.DEFAULT_TYPE):
         expira = usuarios_vip[user_id]
         await update.message.reply_text(f"✅ Activo hasta:\n{expira}")
     else:
-        await update.message.reply_text("❌ Sin acceso")
+        await update.message.reply_text("❌ Sin acceso VIP")
 
 # ================= MAIN =================
 
