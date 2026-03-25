@@ -1,24 +1,22 @@
+import os
+import logging
 import mysql.connector
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
-import logging
-import os
 
-# Configuración de logs
+# Logs para ver errores en Railway
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ======== VARIABLES SEGÚN TU CAPTURA DE RAILWAY ========
-TOKEN = os.getenv("TELEGRAM_TOKEN")
-DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal") # Cambia localhost en Railway por esto
+# ======== VARIABLES SEGÚN TU IMAGEN .ENV ========
+TOKEN = os.getenv("TELEGRAM_TOKEN", "8717607121:AAEjR8NdGjOCASuqY1fV5bL1CYNG4nBpDg")
+DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal") # IMPORTANTE: Cambia localhost en el panel
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASSWORD", "nabo94nabo94")
 DB_NAME = os.getenv("DB_NAME", "ani")
 DB_PORT = int(os.getenv("DB_PORT", 3306))
-IMG_URL = os.getenv("START_IMAGE_URL", "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg")
 
-# Función de conexión
-def get_db_connection():
+def conectar_db():
     try:
         return mysql.connector.connect(
             host=DB_HOST,
@@ -26,36 +24,28 @@ def get_db_connection():
             password=DB_PASS,
             database=DB_NAME,
             port=DB_PORT,
-            charset="utf8"
+            connect_timeout=5
         )
     except Exception as e:
-        logger.error(f"❌ Error conectando a la DB en {DB_HOST}: {e}")
+        logger.error(f"Error conectando a DB: {e}")
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_db_connection()
-    if conn and conn.is_connected():
-        status = "✅ BASE DE DATOS: CONECTADA"
-        conn.close()
-    else:
-        status = "❌ BASE DE DATOS: ERROR (Revisa DB_HOST)"
+    conn = conectar_db()
+    status = "CONECTADA ✅" if conn and conn.is_connected() else "ERROR EN DB ❌ (Cambia localhost)"
+    if conn: conn.close()
     
-    await update.message.reply_photo(
-        photo=IMG_URL, 
-        caption=f"乄 𝐏𝐀𝐁𝐋𝐎 𝗠𝗘𝗡𝗨 ⚔️\n\n{status}\n\n👑 Owner: @Broquicalifoxx",
-        parse_mode="Markdown"
+    await update.message.reply_text(
+        f"⚔️ PABLO MENU ⚔️\n\nBase de Datos: {status}\n\nUsa /nequi o /cc"
     )
 
 def main():
-    if not TOKEN:
-        logger.error("Falta la variable TELEGRAM_TOKEN")
-        return
-
+    # drop_pending_updates=True limpia el error de "Conflict" y mensajes viejos
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     
-    logger.info(f"Bot iniciado. Intentando conectar a: {DB_HOST}")
-    app.run_polling()
+    logger.info("🚀 Bot encendido con el nuevo Token")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
