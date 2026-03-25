@@ -260,7 +260,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     try:
-        await update.message.reply_document(document=START_IMAGE_URL, caption=texto)
+        await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     except:
         await update.message.reply_text(texto)
 
@@ -565,4 +565,3 @@ def main():
 
 if __name__ == "__main__":
     main()
- 
