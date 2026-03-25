@@ -6,9 +6,9 @@ import logging
 import os
 import requests
 import json
+import tempfile
 from datetime import datetime, timedelta
 
-# Configuración del logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -26,7 +26,6 @@ OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@BroquicalifoxxBot"
 OWNER_ID = 8114050673
 
-# Pool de conexiones corregida
 pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="pool_db",
     pool_size=10,
@@ -45,7 +44,54 @@ LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.
 START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 TIMEOUT = 120
 
-# ======== FUNCIONES DE BASE DE DATOS (CORREGIDAS) ========
+def clean(value):
+    if value is None or value == "" or value == "null":
+        return "No registra"
+    if isinstance(value, bool):
+        return "Sí" if value else "No"
+    return str(value)
+
+def consultar_cedula_c2(cedula):
+    try:
+        r = requests.post(API_URL_C2, json={"cedula": str(cedula)},
+                          headers={"Content-Type": "application/json"}, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error al consultar C2: {e}")
+        return None
+
+def consultar_placa(placa):
+    try:
+        r = requests.get(PLACA_API_URL, params={"placa": placa}, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error al consultar placa: {e}")
+        return None
+
+def consultar_llave(alias):
+    try:
+        r = requests.get(LLAVE_API_BASE, params={"hexn": alias}, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error al consultar llave: {e}")
+        return None
+
+def consultar_nequi(telefono):
+    try:
+        r = requests.post("https://extract.nequialpha.com/consultar",
+                          json={"telefono": str(telefono)},
+                          headers={"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"},
+                          timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error al consultar Nequi: {e}")
+        return None
+
+# ======== FUNCIONES BD ========
 
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID:
@@ -56,7 +102,8 @@ def tiene_key_valida(user_id):
         cursor = connection.cursor(dictionary=True)
         cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
         return cursor.fetchone() is not None
-    except: return False
+    except:
+        return False
     finally:
         if connection and connection.is_connected():
             connection.close()
@@ -68,7 +115,8 @@ def buscar_cedula(cedula):
         cursor = connection.cursor(dictionary=True)
         cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (cedula,))
         return cursor.fetchone()
-    except: return None
+    except:
+        return None
     finally:
         if connection and connection.is_connected():
             connection.close()
@@ -160,7 +208,6 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("📌 Uso: /cc <numero>")
         return
-    
     datos = buscar_cedula(context.args[0])
     if datos:
         msg = f"👤 Nombre: {datos.get('ANINombre1')} {datos.get('ANIApellido1')}\n🏠 Dir: {datos.get('ANIDireccion')}"
@@ -168,24 +215,107 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ No encontrado.")
 
-async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id): return
-    if not context.args: return
+async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /c2 <documento>")
+        return
     try:
-        r = requests.post("https://extract.nequialpha.com/consultar", 
-                          json={"telefono": context.args[0]}, 
-                          headers={"X-Api-Key": "M43289032FH23B"}, timeout=10)
-        res = r.json()
-        await update.message.reply_text(f"📱 Nequi: {res.get('nombre_completo')}")
-    except: await update.message.reply_text("❌ Error API")
+        res = consultar_cedula_c2(context.args[0])
+        if not res or not res.get("success"):
+            await update.message.reply_text("❌ No se encontró información.")
+            return
+        d = res.get("data", {})
+        mensaje = f"📄 RESULTADO\n\n🆔 Documento: {clean(d.get('cedula'))}\n🪪 Tipo: {clean(d.get('tipo_documento'))}\n\n"
+        secciones = {
+            "👤 IDENTIDAD": ["primer_nombre","segundo_nombre","primer_apellido","segundo_apellido","sexo","genero","fecha_nacimiento"],
+            "📍 UBICACIÓN": ["pais_nacimiento","departamento_nacimiento","municipio_nacimiento","pais_residencia","departamento_residencia","municipio_residencia","direccion"],
+            "🏥 SALUD": ["regimen_afiliacion","eps","esquema_vacunacion_completo"],
+            "📋 ESTADO": ["estudia_actualmente","pertenencia_etnica","desplazado","discapacitado","fallecido"]
+        }
+        usados = {"cedula", "tipo_documento"}
+        for titulo, campos in secciones.items():
+            bloque = []
+            for campo in campos:
+                if campo in d:
+                    usados.add(campo)
+                    bloque.append(f"• {campo.replace('_',' ').title()}: {clean(d.get(campo))}")
+            if bloque:
+                mensaje += f"{titulo}\n" + "\n".join(bloque) + "\n\n"
+        extras = [f"• {k.replace('_',' ').title()}: {clean(v)}" for k, v in d.items() if k not in usados]
+        if extras:
+            mensaje += "🧩 OTROS\n" + "\n".join(extras) + "\n\n"
+        mensaje += f"👑 {OWNER_USER}"
+        await update.message.reply_text(mensaje)
+    except Exception as e:
+        logger.error(f"Error en /c2: {e}")
+        await update.message.reply_text("❌ Error al procesar la solicitud.")
+
+async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /nequi <telefono>")
+        return
+    try:
+        res = consultar_nequi(context.args[0])
+        if not res:
+            await update.message.reply_text("❌ No se obtuvo respuesta de la API.")
+            return
+        mensaje = (
+            f"🔎 Resultado /nequi\n\n"
+            f"📱 Teléfono: {res.get('telefono') or 'No registra'}\n"
+            f"🆔 Cédula: {res.get('cedula') or 'No registra'}\n"
+            f"👤 Nombre: {res.get('nombre_completo') or 'No registra'}\n"
+            f"📍 Municipio: {res.get('municipio') or 'No registra'}\n"
+            f"🗄️ DB: {'Sí' if res.get('db') else 'No'}\n\n"
+            f"👑 {OWNER_USER}"
+        )
+        await update.message.reply_text(mensaje)
+    except Exception as e:
+        logger.error(f"Error en /nequi: {e}")
+        await update.message.reply_text("❌ Error al procesar la solicitud.")
+
+async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /llave <alias>")
+        return
+    try:
+        res = consultar_llave(context.args[0])
+        mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
+        await update.message.reply_text(f"```json\n{mensaje_json}\n```", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error en /llave: {e}")
+        await update.message.reply_text("❌ Error al procesar la solicitud.")
 
 async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id): return
-    if not context.args: return
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /placa <placa>")
+        return
     try:
-        r = requests.get(PLACA_API_URL, params={"placa": context.args[0]}, timeout=10)
-        await update.message.reply_text(f"🚗 Placa: {r.text}")
-    except: await update.message.reply_text("❌ Error Placa")
+        res = consultar_placa(context.args[0].upper())
+        mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
+        if len(mensaje_json) > 4000:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(mensaje_json)
+                temp_file = f.name
+            with open(temp_file, 'rb') as f:
+                await update.message.reply_document(document=f, filename=f"placa_{context.args[0]}.txt")
+            os.remove(temp_file)
+        else:
+            await update.message.reply_text(f"```json\n{mensaje_json}\n```", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error en /placa: {e}")
+        await update.message.reply_text("❌ Error al procesar la solicitud.")
 
 # ======== MAIN ========
 def main():
@@ -195,7 +325,9 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addkey", comando_addkey))
     application.add_handler(CommandHandler("cc", comando_cc))
+    application.add_handler(CommandHandler("c2", comando_c2))
     application.add_handler(CommandHandler("nequi", comando_nequi))
+    application.add_handler(CommandHandler("llave", comando_llave))
     application.add_handler(CommandHandler("placa", comando_placa))
 
     logger.info("Bot Broquicali en línea.")
