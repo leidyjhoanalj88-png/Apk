@@ -31,13 +31,44 @@ def activar_vip(user_id, dias):
     expira = datetime.now() + timedelta(days=dias)
     usuarios_vip[user_id] = expira
 
-# ================= NEQUI (BASE) =================
+# ================= NEQUI REAL =================
 def consultar_nequi(numero):
-    return {
-        "numero": numero,
-        "titular": "DATOS NO DISPONIBLES (API OFF)",
-        "estado": "Simulado"
-    }
+    try:
+        import requests
+
+        url = "https://extract.nequialpha.com/consultar"
+
+        headers = {
+            "X-Api-Key": "M43289032FH23B",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"telefono": str(numero)}
+
+        r = requests.post(url, json=payload, headers=headers, timeout=15)
+
+        if r.status_code == 200:
+            data = r.json()
+
+            return {
+                "numero": numero,
+                "titular": data.get("nombre", "No encontrado"),
+                "estado": "OK"
+            }
+
+        else:
+            return {
+                "numero": numero,
+                "titular": "Error API",
+                "estado": f"HTTP {r.status_code}"
+            }
+
+    except Exception as e:
+        return {
+            "numero": numero,
+            "titular": "Error conexión",
+            "estado": "OFFLINE"
+        }
 
 # ================= COMANDOS =================
 
@@ -98,13 +129,23 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await msg.edit_text(
         f"""
-✅ RESULTADO
+╔══════════════════════════════╗
+        🔎 RESULTADO 🔎
+╚══════════════════════════════╝
 
+📡 Consulta ejecutada
+🧠 Datos extraídos
+
+━━━━━━━━━━━━━━━━━━━━━━━
 📱 Número: {data['numero']}
 👤 Titular: {data['titular']}
 📊 Estado: {data['estado']}
+━━━━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━
+⚠️ Información sensible
+👁 Uso interno
+
+━━━━━━━━━━━━━━━━━━━━━━━
 👑 @Broquicalifoxx
 """
     )
