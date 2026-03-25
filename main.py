@@ -1,4 +1,7 @@
 import os
+import logging
+from datetime import datetime, timedelta
+
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
@@ -9,157 +12,115 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID"))
 
-# 👉 Lista dinámica en memoria
-usuarios_permitidos = {ADMIN_ID}
+# ================= LOG =================
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# ============== LÓGICA ===================
-class NequiConsultor:
-    def consultar(self, numero):
-        return f"Consulta simulada para {numero}"
+# ================= DB SIMPLE (TEMPORAL) =================
+usuarios_vip = {}
 
-bot_nequi = NequiConsultor()
+def es_vip(user_id):
+    if user_id in usuarios_vip:
+        if usuarios_vip[user_id] > datetime.now():
+            return True
+    return False
 
-# ============== COMANDOS ===================
+def activar_vip(user_id, dias):
+    expira = datetime.now() + timedelta(days=dias)
+    usuarios_vip[user_id] = expira
 
-# 🔥 START
+# ================= NEQUI (BASE) =================
+def consultar_nequi(numero):
+    # 🔥 Aquí luego metemos API real
+    return {
+        "numero": numero,
+        "titular": "DATOS NO DISPONIBLES (API OFF)",
+        "estado": "Simulado"
+    }
+
+# ================= COMANDOS =================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        """
-🤖 BOT NEQUI ACTIVO
-
-━━━━━━━━━━━━━━━
-🔍 Consultas privadas
-⚡ Rápido y directo
-━━━━━━━━━━━━━━━
-
-📌 Usa /help
-"""
+    texto = (
+        "╔════════════════════════════╗\n"
+        "      ⚔️ SOMBRA DIGITAL ⚔️\n"
+        "╚════════════════════════════╝\n\n"
+        "👁 Sistema privado de consultas\n"
+        "⚡ Acceso restringido\n\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "⚙️ COMANDOS\n"
+        "━━━━━━━━━━━━━━━━━━━\n"
+        "🔎 /nequi 300XXXXXXX\n"
+        "🔑 /vip\n\n"
+        "👑 Owner: @broquicalifaxx"
     )
-
-# 📚 HELP
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        """
-📚 COMANDOS
-
-━━━━━━━━━━━━━━━
-🔍 /nequi 3001234567
-
-👑 ADMIN:
-/adduser ID
-/deluser ID
-/listusers
-━━━━━━━━━━━━━━━
-"""
-    )
+    await update.message.reply_text(texto)
 
 # 🔍 NEQUI
 async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
-    if user_id not in usuarios_permitidos:
-        await update.message.reply_text("❌ No tienes acceso")
+    if not es_vip(user_id):
+        await update.message.reply_text("❌ Acceso denegado (Solo VIP)")
         return
 
     if not context.args:
-        await update.message.reply_text("⚠️ Usa: /nequi 3001234567")
+        await update.message.reply_text("⚠️ Uso: /nequi 3001234567")
         return
 
     numero = context.args[0]
 
-    msg = await update.message.reply_text(f"🔍 Consultando {numero}...")
+    msg = await update.message.reply_text("🔍 Consultando...")
 
-    resultado = bot_nequi.consultar(numero)
+    data = consultar_nequi(numero)
 
     await msg.edit_text(
         f"""
 ✅ RESULTADO
 
-📱 Número: {numero}
-👤 Titular:
-{resultado}
+📱 Número: {data['numero']}
+👤 Titular: {data['titular']}
+📊 Estado: {data['estado']}
 
 ━━━━━━━━━━━━━━━
+👑 @broquicalifaxx
 """
     )
 
-# 👉 AGREGAR USUARIO
-async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 🔑 ACTIVAR VIP (ADMIN)
+async def vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id != ADMIN_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
-    if not context.args:
-        await update.message.reply_text("⚠️ Usa: /adduser 123456789")
+    if len(context.args) != 2:
+        await update.message.reply_text("⚠️ Uso: /vip ID DIAS")
         return
 
     try:
-        new_id = int(context.args[0])
+        target = int(context.args[0])
+        dias = int(context.args[1])
     except:
-        await update.message.reply_text("❌ ID inválido")
+        await update.message.reply_text("❌ Datos inválidos")
         return
 
-    usuarios_permitidos.add(new_id)
-    await update.message.reply_text(f"✅ Usuario {new_id} agregado")
-
-# 👉 ELIMINAR USUARIO
-async def deluser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Solo admin")
-        return
-
-    if not context.args:
-        await update.message.reply_text("⚠️ Usa: /deluser 123456789")
-        return
-
-    try:
-        rem_id = int(context.args[0])
-    except:
-        await update.message.reply_text("❌ ID inválido")
-        return
-
-    usuarios_permitidos.discard(rem_id)
-    await update.message.reply_text(f"🗑 Usuario {rem_id} eliminado")
-
-# 👉 LISTAR USUARIOS
-async def listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if user_id != ADMIN_ID:
-        await update.message.reply_text("❌ Solo admin")
-        return
-
-    if not usuarios_permitidos:
-        await update.message.reply_text("⚠️ No hay usuarios")
-        return
-
-    lista = "\n".join(f"• {u}" for u in usuarios_permitidos)
+    activar_vip(target, dias)
 
     await update.message.reply_text(
-        f"""
-👥 USUARIOS AUTORIZADOS
-
-━━━━━━━━━━━━━━━
-{lista}
-━━━━━━━━━━━━━━━
-"""
+        f"✅ VIP activado\n👤 {target}\n⏳ {dias} días"
     )
 
-# ============== MAIN ===================
+# ================= MAIN =================
+
 if __name__ == "__main__":
-    print("🚀 Bot corriendo...")
+    print("🚀 BOT CORRIENDO...")
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("nequi", nequi))
-    app.add_handler(CommandHandler("adduser", adduser))
-    app.add_handler(CommandHandler("deluser", deluser))
-    app.add_handler(CommandHandler("listusers", listusers))
+    app.add_handler(CommandHandler("vip", vip))
 
     app.run_polling()
