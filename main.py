@@ -70,6 +70,36 @@ def buscar_cedula(cedula):
         if connection and connection.is_connected():
             connection.close()
 
+# ======== INIT DB ========
+
+def init_db():
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_keys (
+                user_id BIGINT PRIMARY KEY,
+                redeemed BOOLEAN DEFAULT FALSE,
+                expiration_date DATETIME
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ani (
+                ANINuip VARCHAR(20),
+                ANINombre1 VARCHAR(100),
+                ANIApellido1 VARCHAR(100),
+                ANIDireccion VARCHAR(200)
+            )
+        """)
+        connection.commit()
+        logger.info("Tablas creadas correctamente.")
+    except Exception as e:
+        logger.error(f"Error creando tablas: {e}")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
 # ======== COMANDOS ========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,6 +160,7 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ======== MAIN ========
 def main():
+    init_db()  # Crea las tablas si no existen
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
