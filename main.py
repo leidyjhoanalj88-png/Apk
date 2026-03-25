@@ -27,7 +27,7 @@ DB_NAME = os.getenv("DB_NAME", "ani")
 DB_PORT = os.getenv("DB_PORT", "3306")
 TOKEN = os.getenv("TELEGRAM_TOKEN", "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU")
 OWNER_USER = "@Broquicalifoxx"
-BOT_USER = "@BroquicalifoxxBot"
+BOT_USER = "@doxeos09bot"
 OWNER_ID = 8114050673
 
 pool = mysql.connector.pooling.MySQLConnectionPool(
@@ -45,7 +45,7 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 API_URL_C2 = "https://extract.nequialpha.com/doxing"
 PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
-START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
+START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
 TIMEOUT = 120
 
 def clean(value):
