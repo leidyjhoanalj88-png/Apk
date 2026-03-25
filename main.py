@@ -9,7 +9,9 @@ from datetime import datetime, timedelta
 import os
 import requests
 import json
-from dotenv import load_dotenv
+import tempfile
+import subprocess
+from dotenv import load_dotenv #
 
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
@@ -35,9 +37,16 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 # ======== CONFIGURACIÓN DE APIs ========
 NEQUI_API_KEY = os.getenv("NEQUI_API_KEY", "M43289032FH23B")
 START_IMAGE_URL = os.getenv("START_IMAGE_URL", "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg")
+API_URL_C2 = os.getenv("API_URL_C2", "https://extract.nequialpha.com/doxing")
+PLACA_API_URL = os.getenv("PLACA_API_URL", "https://alex-bookmark-univ-survival.trycloudflare.com/index.php")
 TIMEOUT = 120
 
-# Funciones de utilidad
+# Funciones de Utilidad
+def clean(value):
+    if value is None or value == "" or value == "null":
+        return "No registra"
+    return str(value)
+
 def es_admin(user_id):
     try:
         conn = pool.get_connection()
@@ -52,15 +61,17 @@ def tiene_key_valida(user_id):
     try:
         conn = pool.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
+        query = "SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()"
+        cursor.execute(query, (user_id,))
         res = cursor.fetchone()
         conn.close()
         return res is not None
     except: return False
 
-# Comandos del Bot
+# ======== COMANDOS ========
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    owner = os.getenv("OWNER_USERNAME", "@Broquicalifoxx")
+    owner = os.getenv("OWNER_USERNAME", "@Broquicalifoxx") #
     texto = (
         "乄 𝐂𝐀𝐋𝐈𝐅𝐎𝐗𝐗 𝗠𝗘𝗡𝗨 ⚔️\n"
         "═════════════════════════\n"
@@ -68,16 +79,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "┃ ⚙️ 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒 𝐃𝐈𝐒𝐏𝐎𝐍𝐈𝐁𝐋𝐄𝐒\n"
-        "┃ ⚙️ 𝗕𝗼𝘁: @BroquicalifoxxBot\n"
+        "┃ ⚙️ 𝗕𝗼𝘁: @BroquicalifoxxBot\n" #
         "┃ ⚔️ /cc ➛ CONSULTA v1\n"
         "┃ ⚔️ /c2 ➛ CONSULTA v2\n"
         "┃ ⚔️ /nequi ➛ CONSULTA v3\n"
         "┃ ⚔️ /info ➛ MI ESTADO\n"
         "┃ ⚔️ /redeem ➛ ACTIVAR KEY\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-        f"👑 𝙤𝙬𝙣𝙚𝙧: {owner}"
+        f"👑 𝙤𝙬𝙣𝙚𝙧: {owner}" #
     )
-    await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
+    try:
+        await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
+    except:
+        await update.message.reply_text(texto)
 
 async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
@@ -128,38 +142,26 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
     except Exception as e: logger.error(e)
 
-async def mostrar_datos_cedula(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ No tienes una suscripción activa.")
-        return
-    if not context.args: return
-    cedula = context.args[0]
-    try:
-        conn = pool.get_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (cedula,))
-        datos = cursor.fetchone()
-        if datos:
-            msg = f"👤 {datos['ANINombre1']} {datos['ANIApellido1']}\n🆔 {cedula}"
-            await update.message.reply_text(msg)
-        else:
-            await update.message.reply_text("No encontrado en DB local.")
-        conn.close()
-    except Exception as e: logger.error(e)
+async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    OWNER_ID = int(os.getenv("OWNER_ID", "8114050673")) #
+    if update.message.from_user.id != OWNER_ID: return
+    await update.message.reply_text("✅ Reorganizando las pool...")
+    # Lógica de reorganización aquí...
 
+# ======== MAIN ========
 def main():
-    token = os.getenv("TELEGRAM_TOKEN")
+    token = os.getenv("TELEGRAM_TOKEN") #
     if not token:
         print("Falta TELEGRAM_TOKEN en .env")
         return
 
     app = Application.builder().token(token).build()
 
-    # Handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("cc", mostrar_datos_cedula))
+    app.add_handler(CommandHandler("cc", registrar_usuario)) # Ejemplo simplificado
     app.add_handler(CommandHandler("generar_key", generar_key))
     app.add_handler(CommandHandler("redeem", redeem))
+    app.add_handler(CommandHandler("heidysql", heidysql))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
     print("--- BOT CALIFOXX INICIADO ---")
