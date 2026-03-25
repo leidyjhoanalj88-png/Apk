@@ -16,7 +16,7 @@ ADMIN_ID = int(os.getenv("ADMIN_ID"))
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ================= DB SIMPLE (TEMPORAL) =================
+# ================= DB SIMPLE =================
 usuarios_vip = {}
 
 def es_vip(user_id):
@@ -31,7 +31,7 @@ def activar_vip(user_id, dias):
     expira = datetime.now() + timedelta(days=dias)
     usuarios_vip[user_id] = expira
 
-# ================= NEQUI REAL =================
+# ================= NEQUI (CON API + FALLBACK) =================
 def consultar_nequi(numero):
     try:
         import requests
@@ -60,19 +60,19 @@ def consultar_nequi(numero):
             return {
                 "numero": numero,
                 "titular": "Error API",
-                "estado": f"HTTP {r.status_code}"
+                "estado": "FALLBACK"
             }
 
-    except Exception as e:
+    except Exception:
         return {
             "numero": numero,
             "titular": "Error conexión",
-            "estado": "OFFLINE"
+            "estado": "FALLBACK"
         }
 
 # ================= COMANDOS =================
 
-# 🔥 START (SISTEMA OSCURO)
+# 🔥 START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     nombre = update.effective_user.first_name
 
@@ -83,7 +83,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🧠 Inicializando núcleo…
 📡 Conectando nodos ocultos…
-🗂 Acceso restringido: ✔️
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 👁 Usuario: {nombre}
@@ -91,21 +90,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💀 Modo: SIGILOSO
 ━━━━━━━━━━━━━━━━━━━━━━━
 
-⚔️ COMANDOS DISPONIBLES
-
 🔎 /nequi ➛ Extraer información
-🔑 /vip ➛ Activar acceso (admin)
-📊 /miacceso ➛ Estado del sistema
+🔑 /vip ➛ Activar acceso
+📊 /miacceso ➛ Estado
 
 ━━━━━━━━━━━━━━━━━━━━━━━
-📡 Escaneando bases de datos...
-🧠 Procesando patrones...
-⚠️ Toda actividad queda registrada
+⚠️ Sistema protegido
+👁 Actividad registrada
 
-💀 No hay vuelta atrás...
-━━━━━━━━━━━━━━━━━━━━━━━
-
-👑 𝙤𝙬𝙣𝙚𝙧: @Broquicalifoxx
+👑 @Broquicalifoxx
 """
     await update.message.reply_text(texto)
 
@@ -127,6 +120,11 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = consultar_nequi(numero)
 
+    # 🔥 OCULTAR ERRORES (FALLBACK PRO)
+    if data["estado"] != "OK":
+        data["titular"] = "No disponible"
+        data["estado"] = "Sistema protegido"
+
     await msg.edit_text(
         f"""
 ╔══════════════════════════════╗
@@ -134,7 +132,7 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ╚══════════════════════════════╝
 
 📡 Consulta ejecutada
-🧠 Datos extraídos
+🧠 Datos procesados
 
 ━━━━━━━━━━━━━━━━━━━━━━━
 📱 Número: {data['numero']}
@@ -150,7 +148,7 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     )
 
-# 🔑 ACTIVAR VIP (ADMIN)
+# 🔑 VIP
 async def vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -180,14 +178,14 @@ async def miacceso(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id == ADMIN_ID:
-        await update.message.reply_text("👑 Eres ADMIN - acceso total")
+        await update.message.reply_text("👑 ADMIN - acceso total")
         return
 
     if user_id in usuarios_vip:
         expira = usuarios_vip[user_id]
-        await update.message.reply_text(f"✅ VIP activo hasta:\n{expira}")
+        await update.message.reply_text(f"✅ Activo hasta:\n{expira}")
     else:
-        await update.message.reply_text("❌ No tienes acceso VIP")
+        await update.message.reply_text("❌ Sin acceso")
 
 # ================= MAIN =================
 
