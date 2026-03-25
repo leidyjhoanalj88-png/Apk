@@ -20,16 +20,40 @@ class NequiConsultor:
 bot_nequi = NequiConsultor()
 
 # ============== COMANDOS ===================
+
+# 🔥 START
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "🤖 Bot activo\n\n"
-        "Comandos:\n"
-        "/nequi 3001234567\n"
-        "/adduser ID\n"
-        "/deluser ID\n"
-        "/listusers"
+        """
+🤖 BOT NEQUI ACTIVO
+
+━━━━━━━━━━━━━━━
+🔍 Consultas privadas
+⚡ Rápido y directo
+━━━━━━━━━━━━━━━
+
+📌 Usa /help
+"""
     )
 
+# 📚 HELP
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        """
+📚 COMANDOS
+
+━━━━━━━━━━━━━━━
+🔍 /nequi 3001234567
+
+👑 ADMIN:
+/adduser ID
+/deluser ID
+/listusers
+━━━━━━━━━━━━━━━
+"""
+    )
+
+# 🔍 NEQUI
 async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -43,9 +67,21 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     numero = context.args[0]
 
-    await update.message.reply_text(f"🔍 Consultando {numero}...")
+    msg = await update.message.reply_text(f"🔍 Consultando {numero}...")
+
     resultado = bot_nequi.consultar(numero)
-    await update.message.reply_text(f"👤 Titular:\n{resultado}")
+
+    await msg.edit_text(
+        f"""
+✅ RESULTADO
+
+📱 Número: {numero}
+👤 Titular:
+{resultado}
+
+━━━━━━━━━━━━━━━
+"""
+    )
 
 # 👉 AGREGAR USUARIO
 async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -59,9 +95,13 @@ async def adduser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usa: /adduser 123456789")
         return
 
-    new_id = int(context.args[0])
-    usuarios_permitidos.add(new_id)
+    try:
+        new_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID inválido")
+        return
 
+    usuarios_permitidos.add(new_id)
     await update.message.reply_text(f"✅ Usuario {new_id} agregado")
 
 # 👉 ELIMINAR USUARIO
@@ -76,9 +116,13 @@ async def deluser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Usa: /deluser 123456789")
         return
 
-    rem_id = int(context.args[0])
-    usuarios_permitidos.discard(rem_id)
+    try:
+        rem_id = int(context.args[0])
+    except:
+        await update.message.reply_text("❌ ID inválido")
+        return
 
+    usuarios_permitidos.discard(rem_id)
     await update.message.reply_text(f"🗑 Usuario {rem_id} eliminado")
 
 # 👉 LISTAR USUARIOS
@@ -89,8 +133,21 @@ async def listusers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Solo admin")
         return
 
-    lista = "\n".join(str(u) for u in usuarios_permitidos)
-    await update.message.reply_text(f"👥 Usuarios:\n{lista}")
+    if not usuarios_permitidos:
+        await update.message.reply_text("⚠️ No hay usuarios")
+        return
+
+    lista = "\n".join(f"• {u}" for u in usuarios_permitidos)
+
+    await update.message.reply_text(
+        f"""
+👥 USUARIOS AUTORIZADOS
+
+━━━━━━━━━━━━━━━
+{lista}
+━━━━━━━━━━━━━━━
+"""
+    )
 
 # ============== MAIN ===================
 if __name__ == "__main__":
@@ -99,6 +156,7 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("nequi", nequi))
     app.add_handler(CommandHandler("adduser", adduser))
     app.add_handler(CommandHandler("deluser", deluser))
