@@ -3,6 +3,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from mysql.connector import pooling
 import logging
+import random
+import string
 import os
 import requests
 import json
@@ -14,6 +16,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.setLevel(logging.WARNING)
 
 # ======== CONFIGURACIÓN RAILWAY ========
 DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal")
@@ -108,13 +112,81 @@ def tiene_key_valida(user_id):
         if connection and connection.is_connected():
             connection.close()
 
+def es_admin(user_id):
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT 1 FROM admins WHERE user_id = %s", (user_id,))
+        return cursor.fetchone() is not None
+    except:
+        return False
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
 def buscar_cedula(cedula):
     connection = None
     try:
         connection = pool.get_connection()
         cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (cedula,))
+        cursor.execute("""
+            SELECT ANINuip, ANIApellido1, ANIApellido2, ANINombre1, ANINombre2,
+                   ANINombresPadre, ANINombresMadre, ANIFchNacimiento, ANIFchExpedicion,
+                   ANISexo, ANIEstatura, ANIDireccion, ANITelefono,
+                   LUGIdNacimiento, LUGIdExpedicion, LUGIdResidencia
+            FROM ani WHERE ANINuip = %s
+        """, (cedula,))
         return cursor.fetchone()
+    except:
+        return None
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+def obtener_lugar(codigo):
+    connection = None
+    try:
+        if not codigo:
+            return None
+        codigo = str(codigo)
+        if len(codigo) < 8:
+            return None
+        codigo_extraido = codigo[3:8]
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM lug_ori WHERE cod_lug LIKE %s", (f"%{codigo_extraido}%",))
+        resultado = cursor.fetchone()
+        return resultado['lug'] if resultado else None
+    except:
+        return None
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+def buscar_por_nombres(nombre_completo):
+    connection = None
+    try:
+        partes = nombre_completo.split()
+        if len(partes) < 3:
+            return None
+        nombre1, apellido1, apellido2 = partes[0], partes[1], partes[2]
+        nombre2 = partes[3] if len(partes) > 3 else None
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        query = """
+            SELECT ANINuip, ANIApellido1, ANIApellido2, ANINombre1, ANINombre2,
+                   ANINombresPadre, ANINombresMadre, ANIFchNacimiento, ANIFchExpedicion,
+                   ANISexo, ANIEstatura, ANIDireccion, ANITelefono,
+                   LUGIdNacimiento, LUGIdExpedicion, LUGIdResidencia
+            FROM ani WHERE ANINombre1 = %s AND ANIApellido1 = %s AND ANIApellido2 = %s
+        """
+        params = [nombre1, apellido1, apellido2]
+        if nombre2:
+            query += " AND ANINombre2 = %s"
+            params.append(nombre2)
+        cursor.execute(query, tuple(params))
+        return cursor.fetchall()
     except:
         return None
     finally:
@@ -143,6 +215,18 @@ def init_db():
                 ANIDireccion VARCHAR(200)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                user_id BIGINT PRIMARY KEY
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                telegram_username VARCHAR(100),
+                date_registered DATETIME
+            )
+        """)
         connection.commit()
         logger.info("Tablas creadas correctamente.")
     except Exception as e:
@@ -167,6 +251,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /nequi ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
         "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
+        "┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
+        "┃ ⚔️ /redeem ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
+        "┃ ⚔️ /info ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "⚠️ 𝐂𝐚𝐝𝐚 𝐎𝐫𝐝𝐞𝐧 𝐄𝐣𝐞𝐜𝐮𝐭𝐚𝐝𝐚 𝐝𝐞𝐣𝐚 𝐜𝐢𝐜𝐚𝐭𝐫𝐢𝐜𝐞𝐬...𝐔𝐬𝐚𝐥𝐨 𝐜𝐨𝐧 𝐫𝐞𝐬𝐩𝐨𝐧𝐬𝐚𝐛𝐢𝐥𝐢𝐝𝐚𝐝 𝐨 𝐬𝐞𝐫𝐚𝐬 𝐝𝐞𝐛𝐨𝐫𝐚𝐝𝐨.\n"
         "═════════════════════════\n"
@@ -201,17 +288,137 @@ async def comando_addkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
+async def comando_genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID and not es_admin(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin permisos.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("📌 Uso: /genkey <user_id> <dias>")
+        return
+    try:
+        target_id = int(context.args[0])
+        dias = int(context.args[1])
+        key = "KEY-" + ''.join(random.choices(string.ascii_letters + string.digits, k=15))
+        expiration = datetime.now() + timedelta(days=dias)
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("INSERT INTO user_keys (key_value, user_id, expiration_date) VALUES (%s, %s, %s)",
+                       (key, target_id, expiration))
+        connection.commit()
+        connection.close()
+        await update.message.reply_text(f"🔑 Key: `{key}`\nExpira: {expiration}", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def comando_redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not context.args:
+        await update.message.reply_text("⚠️ Uso: `/redeem KEY-xxx`", parse_mode="Markdown")
+        return
+    key = context.args[0]
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT key_id, expiration_date FROM user_keys
+            WHERE key_value = %s AND redeemed = FALSE AND expiration_date > NOW()
+        """, (key,))
+        result = cursor.fetchone()
+        if not result:
+            await update.message.reply_text("❌ Clave no válida, ya redimida o expirada.")
+            return
+        cursor.execute("UPDATE user_keys SET redeemed = TRUE, user_id = %s WHERE key_id = %s",
+                       (user_id, result["key_id"]))
+        connection.commit()
+        await update.message.reply_text("✅ Clave redimida con éxito.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+async def comando_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT expiration_date, DATEDIFF(expiration_date, NOW()) AS dias_restantes
+            FROM user_keys WHERE user_id = %s AND redeemed = TRUE ORDER BY expiration_date DESC LIMIT 1
+        """, (user_id,))
+        result = cursor.fetchone()
+        if result:
+            await update.message.reply_text(
+                f"🔑 Suscripción activa\n⏳ Expira en: {result['dias_restantes']} días\n📅 Fecha: {result['expiration_date']}"
+            )
+        else:
+            await update.message.reply_text("❌ No tienes suscripción activa.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
 async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
         await update.message.reply_text("❌ Sin Key activa.")
         return
     if not context.args:
-        await update.message.reply_text("📌 Uso: /cc <numero>")
+        await update.message.reply_text("📌 Uso: /cc <cedula>")
         return
     datos = buscar_cedula(context.args[0])
     if datos:
-        msg = f"👤 Nombre: {datos.get('ANINombre1')} {datos.get('ANIApellido1')}\n🏠 Dir: {datos.get('ANIDireccion')}"
-        await update.message.reply_text(msg)
+        lugar_nac = obtener_lugar(datos.get('LUGIdNacimiento'))
+        lugar_exp = obtener_lugar(datos.get('LUGIdExpedicion'))
+        lugar_res = obtener_lugar(datos.get('LUGIdResidencia'))
+        msg = (
+            f"🪪 CC: `{datos.get('ANINuip')}`\n\n"
+            f"👤 Nombres: `{datos.get('ANINombre1')}` `{datos.get('ANINombre2') or ''}`\n"
+            f"👤 Apellidos: `{datos.get('ANIApellido1')}` `{datos.get('ANIApellido2') or ''}`\n"
+            f"👨 Padre: `{datos.get('ANINombresPadre') or 'No registra'}`\n"
+            f"👩 Madre: `{datos.get('ANINombresMadre') or 'No registra'}`\n"
+            f"📅 Nacimiento: `{datos.get('ANIFchNacimiento') or 'No registra'}`\n"
+            f"📅 Expedición: `{datos.get('ANIFchExpedicion') or 'No registra'}`\n"
+            f"🖇 Sexo: `{datos.get('ANISexo') or 'No registra'}`\n"
+            f"🔆 Estatura: `{datos.get('ANIEstatura') or 'No registra'}` cm\n"
+            f"🏚 Dirección: `{datos.get('ANIDireccion') or 'No registra'}`\n"
+            f"📱 Teléfono: `{datos.get('ANITelefono') or 'No registra'}`\n"
+            f"💻 Nac.: `{lugar_nac or 'No encontrado'}`\n"
+            f"💻 Exp.: `{lugar_exp or 'No encontrado'}`\n"
+            f"💻 Res.: `{lugar_res or 'No encontrado'}`\n\n"
+            f"👑 {OWNER_USER}"
+        )
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ No encontrado.")
+
+async def comando_nombres(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /nombres <nombre> <apellido1> <apellido2>")
+        return
+    nombre_completo = " ".join(context.args)
+    if len(context.args) < 3:
+        await update.message.reply_text("⚠️ Incluye al menos un nombre y dos apellidos.")
+        return
+    await update.message.reply_text("🔍 Buscando...")
+    datos = buscar_por_nombres(nombre_completo)
+    if datos:
+        for dato in datos:
+            msg = (
+                f"🪪 CC: `{dato.get('ANINuip')}`\n"
+                f"👤 `{dato.get('ANINombre1')}` `{dato.get('ANINombre2') or ''}` "
+                f"`{dato.get('ANIApellido1')}` `{dato.get('ANIApellido2') or ''}`\n"
+                f"📅 Nac.: `{dato.get('ANIFchNacimiento') or 'No registra'}`\n"
+                f"🏚 Dir.: `{dato.get('ANIDireccion') or 'No registra'}`\n"
+                f"📱 Tel.: `{dato.get('ANITelefono') or 'No registra'}`\n\n"
+                f"👑 {OWNER_USER}"
+            )
+            await update.message.reply_text(msg, parse_mode="Markdown")
     else:
         await update.message.reply_text("❌ No encontrado.")
 
@@ -317,6 +524,24 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error en /placa: {e}")
         await update.message.reply_text("❌ Error al procesar la solicitud.")
 
+async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    username = update.message.from_user.username
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO users (user_id, telegram_username, date_registered) VALUES (%s, %s, %s)",
+                           (user_id, username, datetime.now()))
+            connection.commit()
+    except:
+        pass
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
 # ======== MAIN ========
 def main():
     init_db()
@@ -324,11 +549,16 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("addkey", comando_addkey))
+    application.add_handler(CommandHandler("genkey", comando_genkey))
+    application.add_handler(CommandHandler("redeem", comando_redeem))
+    application.add_handler(CommandHandler("info", comando_info))
     application.add_handler(CommandHandler("cc", comando_cc))
+    application.add_handler(CommandHandler("nombres", comando_nombres))
     application.add_handler(CommandHandler("c2", comando_c2))
     application.add_handler(CommandHandler("nequi", comando_nequi))
     application.add_handler(CommandHandler("llave", comando_llave))
     application.add_handler(CommandHandler("placa", comando_placa))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
     logger.info("Bot Broquicali en línea.")
     application.run_polling()
