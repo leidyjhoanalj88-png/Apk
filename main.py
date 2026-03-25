@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 usuarios_vip = {}
 
 def es_vip(user_id):
+    if user_id == ADMIN_ID:
+        return True
     if user_id in usuarios_vip:
         if usuarios_vip[user_id] > datetime.now():
             return True
@@ -31,7 +33,6 @@ def activar_vip(user_id, dias):
 
 # ================= NEQUI (BASE) =================
 def consultar_nequi(numero):
-    # 🔥 Aquí luego metemos API real
     return {
         "numero": numero,
         "titular": "DATOS NO DISPONIBLES (API OFF)",
@@ -40,20 +41,41 @@ def consultar_nequi(numero):
 
 # ================= COMANDOS =================
 
+# 🔥 START (SISTEMA OSCURO)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    texto = (
-        "╔════════════════════════════╗\n"
-        "      ⚔️ SOMBRA DIGITAL ⚔️\n"
-        "╚════════════════════════════╝\n\n"
-        "👁 Sistema privado de consultas\n"
-        "⚡ Acceso restringido\n\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "⚙️ COMANDOS\n"
-        "━━━━━━━━━━━━━━━━━━━\n"
-        "🔎 /nequi 300XXXXXXX\n"
-        "🔑 /vip\n\n"
-        "👑 Owner: @broquicalifaxx"
-    )
+    nombre = update.effective_user.first_name
+
+    texto = f"""
+╔══════════════════════════════╗
+      ⚔️ SISTEMA OSCURO ⚔️
+╚══════════════════════════════╝
+
+🧠 Inicializando núcleo…
+📡 Conectando nodos ocultos…
+🗂 Acceso restringido: ✔️
+
+━━━━━━━━━━━━━━━━━━━━━━━
+👁 Usuario: {nombre}
+🧬 Estado: MONITOREADO
+💀 Modo: SIGILOSO
+━━━━━━━━━━━━━━━━━━━━━━━
+
+⚔️ COMANDOS DISPONIBLES
+
+🔎 /nequi ➛ Extraer información
+🔑 /vip ➛ Activar acceso (admin)
+📊 /miacceso ➛ Estado del sistema
+
+━━━━━━━━━━━━━━━━━━━━━━━
+📡 Escaneando bases de datos...
+🧠 Procesando patrones...
+⚠️ Toda actividad queda registrada
+
+💀 No hay vuelta atrás...
+━━━━━━━━━━━━━━━━━━━━━━━
+
+👑 𝙤𝙬𝙣𝙚𝙧: @Broquicalifoxx
+"""
     await update.message.reply_text(texto)
 
 # 🔍 NEQUI
@@ -83,7 +105,7 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📊 Estado: {data['estado']}
 
 ━━━━━━━━━━━━━━━
-👑 @broquicalifaxx
+👑 @Broquicalifoxx
 """
     )
 
@@ -112,6 +134,20 @@ async def vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ VIP activado\n👤 {target}\n⏳ {dias} días"
     )
 
+# 📊 MI ACCESO
+async def miacceso(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == ADMIN_ID:
+        await update.message.reply_text("👑 Eres ADMIN - acceso total")
+        return
+
+    if user_id in usuarios_vip:
+        expira = usuarios_vip[user_id]
+        await update.message.reply_text(f"✅ VIP activo hasta:\n{expira}")
+    else:
+        await update.message.reply_text("❌ No tienes acceso VIP")
+
 # ================= MAIN =================
 
 if __name__ == "__main__":
@@ -122,5 +158,6 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("nequi", nequi))
     app.add_handler(CommandHandler("vip", vip))
+    app.add_handler(CommandHandler("miacceso", miacceso))
 
     app.run_polling()
