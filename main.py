@@ -3,12 +3,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from mysql.connector import pooling
 import logging
-import random
-import string
-from datetime import datetime, timedelta
 import os
-import subprocess
-import tempfile
 import requests
 import json
 
@@ -19,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======== CONFIGURACIÓN DESDE VARIABLES DE ENTORNO ========
+# ======== CONFIGURACIÓN RAILWAY ========
 DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASSWORD", "nabo94nabo94")
@@ -28,9 +23,8 @@ DB_PORT = os.getenv("DB_PORT", "3306")
 TOKEN = os.getenv("TELEGRAM_TOKEN", "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU")
 OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@BroquicalifoxxBot"
-# =========================================================
 
-# Pool de conexiones corregida para Railway
+# Pool de conexiones corregida
 pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="pool_db",
     pool_size=10,
@@ -45,138 +39,106 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 # ======== CONFIG APIs ========
 API_URL_C2 = "https://extract.nequialpha.com/doxing"
 PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
-START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
+START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 TIMEOUT = 120
 
-def clean(value):
-    if value is None or value == "" or value == "null":
-        return "No registra"
-    if isinstance(value, bool):
-        return "Sí" if value else "No"
-    return str(value)
+# ======== FUNCIONES DE BASE DE DATOS (CORREGIDAS) ========
 
-# --- FUNCIONES DE CONSULTA ---
-def test_db():
+def tiene_key_valida(user_id):
+    connection = None
     try:
-        conn = pool.get_connection()
-        conn.close()
-        return "CONECTADA ✅"
-    except:
-        return "ERROR ❌"
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
+        return cursor.fetchone() is not None
+    except: return False
+    finally:
+        # AQUÍ ESTABA EL ERROR DE SINTAXIS (CORREGIDO CON :)
+        if connection and connection.is_connected():
+            connection.close()
 
-def consultar_cedula_c2(cedula):
+def buscar_cedula(cedula):
+    connection = None
     try:
-        r = requests.post(API_URL_C2, json={"cedula": str(cedula)}, headers={"Content-Type": "application/json"}, timeout=TIMEOUT)
-        return r.json()
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (cedula,))
+        return cursor.fetchone()
     except: return None
-
-def consultar_placa(placa):
-    try:
-        r = requests.get(PLACA_API_URL, params={"placa": placa}, timeout=TIMEOUT)
-        return r.json()
-    except: return None
-
-def consultar_llave(alias):
-    try:
-        r = requests.get(LLAVE_API_BASE, params={"hexn": alias}, timeout=TIMEOUT)
-        return r.json()
-    except: return None
-
-def consultar_nequi(telefono):
-    try:
-        url = "https://extract.nequialpha.com/consultar"
-        headers = {"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"}
-        r = requests.post(url, json={"telefono": str(telefono)}, headers=headers, timeout=TIMEOUT)
-        return r.json()
-    except: return None
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
 
 # ======== COMANDOS ========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    db_status = test_db()
     texto = (
         "乄 𝐏𝐀𝐁𝐋𝐎 𝗠𝗘𝗡𝗨 ⚔️\n"
         "═════════════════════════\n"
-        "𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚𝐥 𝐢𝐧𝐟𝐢𝐞𝐫𝐧𝐨 𝐝𝐢𝐠𝐢𝐭𝐚𝐥... 𝐚𝐜𝐚 𝐧𝐨 𝐡𝐚𝐲 𝐫𝐞𝐠𝐥𝐚𝐬, 𝐬𝐨𝐥𝐨 𝐜𝐨𝐦𝐚𝐧𝐝𝐨𝐬 ⚔️\n"
+        "𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚𝐥 𝐢𝐧𝐟𝐢𝐞𝐫𝐧𝐨 𝐝𝐢𝐠𝐢𝐭𝐚𝐥... ⚔️\n"
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         f"┃ ⚙️ 𝐁𝐨𝐭: {BOT_USER}\n"
-        "┃ ⚔️ /start ➛ 𝐃𝐄𝐒𝐏𝐈𝐄𝐑𝐓𝐀 𝐋𝐀 𝐁𝐄𝐒𝐓𝐈𝐀 \n"
-        "┃ ⚔️ /cc ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯1\n"
-        "┃ ⚔️ /c2 ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯2\n"
-        "┃ ⚔️ /nequi ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯3\n"
+        "┃ ⚔️ /start ➛ 𝐌𝐄𝐍𝐔 𝐏𝐑𝐈𝐍𝐂𝐈𝐏𝐀𝐋\n"
+        "┃ ⚔️ /cc ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯1\n"
+        "┃ ⚔️ /c2 ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯2\n"
+        "┃ ⚔️ /nequi ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
         "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
-        f"┃ 🔋 𝐃𝐁: {db_status}\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-        "⚠️ 𝐂𝐚𝐝𝐚 𝐎𝐫𝐝𝐞𝐧 𝐄𝐣𝐞𝐜𝐮𝐭𝐚𝐝𝐚 𝐝𝐞𝐣𝐚 𝐜𝐢𝐜𝐚𝐭𝐫𝐢𝐜𝐞𝐬... 𝐔𝐬𝐚𝐥𝐨 𝐜𝐨𝐧 𝐫𝐞𝐬𝐩𝐨𝐧𝐬𝐚𝐛𝐢𝐥𝐢𝐝𝐚𝐝.\n"
-        "═════════════════════════\n"
-        f"👑 𝙤𝙬𝙣𝙚rer: {OWNER_USER}"
+        f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     try:
         await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     except:
         await update.message.reply_text(texto)
 
-async def mostrar_datos_cedula(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if not tiene_key_valida(user_id):
-        await update.message.reply_text("❌ No tienes una clave activa.")
+async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
         return
     if not context.args:
-        await update.message.reply_text("⚠️ Uso: `/cc 12345678`", parse_mode="Markdown")
+        await update.message.reply_text("📌 Uso: /cc <numero>")
         return
     
-    cedula = context.args[0]
-    datos = buscar_cedula(cedula, user_id=user_id)
-
+    datos = buscar_cedula(context.args[0])
     if datos:
-        mensaje = (
-            f"🪪 CC: `{cedula}`\n"
-            f"👤 Nombres: `{datos['ANINombre1']} {datos['ANINombre2']}`\n"
-            f"👤 Apellidos: `{datos['ANIApellido1']} {datos['ANIApellido2']}`\n"
-            f"📱 Teléfono: `{datos['ANITelefono']}`\n"
-            f"🏚 Dirección: `{datos['ANIDireccion']}`\n\n"
-            f"🛡 Creditos: {OWNER_USER}"
-        )
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
+        msg = f"👤 Nombre: {datos.get('ANINombre1')} {datos.get('ANIApellido1')}\n🏠 Dir: {datos.get('ANIDireccion')}"
+        await update.message.reply_text(msg)
     else:
-        await update.message.reply_text("❌ No se encontraron datos.")
+        await update.message.reply_text("❌ No encontrado.")
 
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if not tiene_key_valida(user_id):
-        await update.message.reply_text("❌ Key requerida.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /nequi <telefono>")
-        return
-
-    res = consultar_nequi(context.args[0])
-    if res:
-        mensaje = (
-            f"🔎 Resultado Nequi\n"
-            f"📱 Teléfono: {res.get('telefono')}\n"
-            f"🆔 Cédula: {res.get('cedula')}\n"
-            f"👤 Nombre: {res.get('nombre_completo')}\n\n"
-            f"🔖 by {OWNER_USER}"
-        )
-        await update.message.reply_text(mensaje)
-    else:
-        await update.message.reply_text("❌ Error en consulta.")
-
-# --- MANTENIMIENTO DE FUNCIONES EXISTENTES ---
-# (Aquí siguen todas tus funciones de buscar_cedula, registrar_usuario, redeem, etc.)
-# Asegúrate de mantener 'tiene_key_valida', 'es_admin', 'buscar_cedula' tal cual las tenías.
-
-def tiene_key_valida(user_id):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
     try:
-        connection = pool.get_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
-        result = cursor.fetchone()
-        return result is not None
-    except: return False
-    finally:
-        if 'connection' in locals()
+        r = requests.post("https://extract.nequialpha.com/consultar", 
+                          json={"telefono": context.args[0]}, 
+                          headers={"X-Api-Key": "M43289032FH23B"}, timeout=10)
+        res = r.json()
+        await update.message.reply_text(f"📱 Nequi: {res.get('nombre_completo')}")
+    except: await update.message.reply_text("❌ Error API")
+
+async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
+    try:
+        r = requests.get(PLACA_API_URL, params={"placa": context.args[0]}, timeout=10)
+        await update.message.reply_text(f"🚗 Placa: {r.text}")
+    except: await update.message.reply_text("❌ Error Placa")
+
+# ======== MAIN ========
+def main():
+    application = Application.builder().token(TOKEN).build()
+
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("cc", comando_cc))
+    application.add_handler(CommandHandler("nequi", comando_nequi))
+    application.add_handler(CommandHandler("placa", comando_placa))
+
+    logger.info("Bot Broquicali en línea.")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
