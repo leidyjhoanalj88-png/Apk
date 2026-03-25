@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
@@ -31,7 +32,7 @@ def activar_vip(user_id, dias):
     expira = datetime.now() + timedelta(days=dias)
     usuarios_vip[user_id] = expira
 
-# ================= MULTI API NEQUI =================
+# ================= MULTI API (NO BLOQUEANTE) =================
 def consultar_nequi(numero):
     import requests
 
@@ -43,20 +44,23 @@ def consultar_nequi(numero):
                 "Content-Type": "application/json"
             },
             "payload": {"telefono": str(numero)},
-            "method": "POST"
-        },
-        # 👉 puedes agregar más APIs aquí
+        }
     ]
 
     for api in apis:
         try:
-            if api["method"] == "POST":
-                r = requests.post(api["url"], json=api["payload"], headers=api["headers"], timeout=10)
-            else:
-                r = requests.get(api["url"], timeout=10)
+            r = requests.post(
+                api["url"],
+                json=api["payload"],
+                headers=api["headers"],
+                timeout=5  # 🔥 evita que se congele
+            )
 
             if r.status_code == 200:
-                data = r.json()
+                try:
+                    data = r.json()
+                except:
+                    continue
 
                 nombre = data.get("nombre") or data.get("titular")
 
@@ -70,7 +74,6 @@ def consultar_nequi(numero):
         except:
             continue
 
-    # 💀 FALLBACK
     return {
         "numero": numero,
         "titular": "No disponible",
@@ -111,7 +114,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     await update.message.reply_text(texto)
 
-# 🔍 NEQUI
+# 🔍 NEQUI (ANTI FREEZE REAL)
 async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -127,7 +130,15 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = await update.message.reply_text("🔍 Consultando...")
 
-    data = consultar_nequi(numero)
+    try:
+        # 🔥 ejecuta sin bloquear el bot
+        data = await asyncio.to_thread(consultar_nequi, numero)
+    except:
+        data = {
+            "numero": numero,
+            "titular": "No disponible",
+            "estado": "Sistema protegido"
+        }
 
     await msg.edit_text(
         f"""
@@ -152,7 +163,7 @@ async def nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
 """
     )
 
-# 🔑 ACTIVAR VIP
+# 🔑 VIP
 async def vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
