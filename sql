@@ -1,0 +1,1 @@
+INSERT IGNORE INTO admins (user_id) VALUES (8114050673);
