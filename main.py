@@ -6,6 +6,7 @@ import logging
 import os
 import requests
 import json
+from datetime import datetime, timedelta
 
 # Configuración del logging
 logging.basicConfig(
@@ -23,6 +24,7 @@ DB_PORT = os.getenv("DB_PORT", "3306")
 TOKEN = os.getenv("TELEGRAM_TOKEN", "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU")
 OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@BroquicalifoxxBot"
+OWNER_ID = 8114050673
 
 # Pool de conexiones corregida
 pool = mysql.connector.pooling.MySQLConnectionPool(
@@ -46,6 +48,8 @@ TIMEOUT = 120
 # ======== FUNCIONES DE BASE DE DATOS (CORREGIDAS) ========
 
 def tiene_key_valida(user_id):
+    if user_id == OWNER_ID:
+        return True
     connection = None
     try:
         connection = pool.get_connection()
@@ -54,7 +58,6 @@ def tiene_key_valida(user_id):
         return cursor.fetchone() is not None
     except: return False
     finally:
-        # AQUÍ ESTABA EL ERROR DE SINTAXIS (CORREGIDO CON :)
         if connection and connection.is_connected():
             connection.close()
 
@@ -106,7 +109,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "乄 𝐏𝐀𝐁𝐋𝐎 𝗠𝗘𝗡𝗨 ⚔️\n"
         "═════════════════════════\n"
-        "𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚𝐥 𝐢𝐧𝐟𝐢𝐞𝐫𝐧𝐨 𝐝𝐢𝐠𝐢𝐭𝐚𝐥... ⚔️\n"
+        "𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚𝐥 𝐢𝐧𝐟𝐢𝐞𝐫𝐧𝐨 𝐝𝐢𝐠𝐢𝐭𝐚𝐥... 𝐚𝐜𝐚 𝐧𝐨 𝐡𝐚𝐲 𝐫𝐞𝐠𝐥𝐚𝐬, 𝐬𝐨𝐥𝐨 𝐜𝐨𝐦𝐚𝐧𝐝𝐨𝐬 ⚔️\n"
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         f"┃ ⚙️ 𝐁𝐨𝐭: {BOT_USER}\n"
@@ -117,12 +120,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
+        "⚠️ 𝐂𝐚𝐝𝐚 𝐎𝐫𝐝𝐞𝐧 𝐄𝐣𝐞𝐜𝐮𝐭𝐚𝐝𝐚 𝐝𝐞𝐣𝐚 𝐜𝐢𝐜𝐚𝐭𝐫𝐢𝐜𝐞𝐬...𝐔𝐬𝐚𝐥𝐨 𝐜𝐨𝐧 𝐫𝐞𝐬𝐩𝐨𝐧𝐬𝐚𝐛𝐢𝐥𝐢𝐝𝐚𝐝 𝐨 𝐬𝐞𝐫𝐚𝐬 𝐝𝐞𝐛𝐨𝐫𝐚𝐝𝐨.\n"
+        "═════════════════════════\n"
         f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     try:
         await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     except:
         await update.message.reply_text(texto)
+
+async def comando_addkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sin permisos.")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("📌 Uso: /addkey <user_id> <dias>")
+        return
+    try:
+        target_id = int(context.args[0])
+        dias = int(context.args[1])
+        expiration = datetime.now() + timedelta(days=dias)
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("""
+            INSERT INTO user_keys (user_id, redeemed, expiration_date)
+            VALUES (%s, TRUE, %s)
+            ON DUPLICATE KEY UPDATE redeemed = TRUE, expiration_date = %s
+        """, (target_id, expiration, expiration))
+        connection.commit()
+        connection.close()
+        await update.message.reply_text(f"✅ Key activada para {target_id} por {dias} días.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
@@ -160,10 +189,11 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ======== MAIN ========
 def main():
-    init_db()  # Crea las tablas si no existen
+    init_db()
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("addkey", comando_addkey))
     application.add_handler(CommandHandler("cc", comando_cc))
     application.add_handler(CommandHandler("nequi", comando_nequi))
     application.add_handler(CommandHandler("placa", comando_placa))
