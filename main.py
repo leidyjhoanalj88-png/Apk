@@ -10,38 +10,39 @@ import requests
 import json
 from datetime import datetime, timedelta
 
-# ======== CONFIGURACIÓN INICIAL ========
+# ======== CONFIGURACIÓN DE IDENTIDAD ========
+OWNER_USER = "@Broquicalifoxx" 
+OWNER_ID = 8114050673 
+BOT_USER = "@doxeos09bot"
+START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
+TIMEOUT = 60
+
+# ======== CONFIGURACIÓN DE LOGGING ========
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# DATOS DEL DUEÑO Y BOT
-OWNER_USER = "@Broquicalifoxx" 
-OWNER_ID = 8114050673 
-START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
+# ======== CONEXIÓN A BASE DE DATOS (FIX PARA RAILWAY) ========
+# Se usan os.getenv para que Railway inyecte las credenciales automáticamente
+try:
+    pool = mysql.connector.pooling.MySQLConnectionPool(
+        pool_name="pool_db",
+        pool_size=20,
+        host=os.getenv('MYSQLHOST', 'localhost'),
+        user=os.getenv('MYSQLUSER', 'root'),
+        password=os.getenv('MYSQLPASSWORD', 'nabo94nabo94'),
+        database=os.getenv('MYSQLDATABASE', 'ani'),
+        port=int(os.getenv('MYSQLPORT', 3306)),
+        charset="utf8",
+        connection_timeout=30
+    )
+    logger.info("✅ Pool de conexiones configurado correctamente.")
+except Exception as e:
+    logger.error(f"❌ Error crítico en DB: {e}")
 
-# ======== CONFIGURACIÓN DE BASE DE DATOS (ADAPTADO A RAILWAY) ========
-pool = mysql.connector.pooling.MySQLConnectionPool(
-    pool_name="pool_db",
-    pool_size=15,
-    host=os.getenv('MYSQLHOST', 'localhost'),
-    user=os.getenv('MYSQLUSER', 'root'),
-    password=os.getenv('MYSQLPASSWORD', 'nabo94nabo94'),
-    database=os.getenv('MYSQLDATABASE', 'ani'),
-    port=int(os.getenv('MYSQLPORT', 3306)),
-    charset="utf8"
-)
-
-# ======== CONFIGURACIÓN DE APIS ========
-API_URL_C2 = "https://extract.nequialpha.com/doxing"
-PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
-LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
-NEQUI_API_URL = "https://extract.nequialpha.com/consultar"
-TIMEOUT = 60
-
-# ======== FUNCIONES DE APOYO Y LIMPIEZA ========
+# ======== FUNCIONES DE APOYO ========
 def clean(value):
     if value is None or value == "" or value == "null": return "No registra"
-    return "Sí" if value is True else "No" if value is False else str(value)
+    return str(value)
 
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID: return True
@@ -55,58 +56,66 @@ def tiene_key_valida(user_id):
     finally:
         if conn: conn.close()
 
-# ======== LÓGICA DE CONSULTAS (APIS) ========
+# ======== COMANDOS DE CONSULTA (APIS INTEGRADAS) ========
 
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if not tiene_key_valida(user_id):
-        await update.message.reply_text("❌ No tienes suscripción activa.")
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin suscripción activa.")
         return
     if not context.args:
-        await update.message.reply_text("📌 Uso: `/nequi 300xxxx`", parse_mode="Markdown")
+        await update.message.reply_text("📌 Uso: `/nequi 3001234567`", parse_mode="Markdown")
         return
     
     try:
-        r = requests.post(NEQUI_API_URL, json={"telefono": context.args[0]}, headers={"X-Api-Key": "M43289032FH23B"}, timeout=TIMEOUT)
+        url = "https://extract.nequialpha.com/consultar"
+        headers = {"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"}
+        r = requests.post(url, json={"telefono": context.args[0]}, headers=headers, timeout=TIMEOUT)
         res = r.json()
+        
         msg = (f"🔎 **RESULTADO NEQUI**\n\n"
-               f"📱 Teléfono: `{res.get('telefono')}`\n"
-               f"🆔 Cédula: `{res.get('cedula')}`\n"
-               f"👤 Nombre: `{res.get('nombre_completo')}`\n"
-               f"📍 Municipio: `{res.get('municipio')}`\n"
-               f"🛡 Creditos: {OWNER_USER}")
+               f"📱 Teléfono: `{res.get('telefono', 'N/A')}`\n"
+               f"🆔 Cédula: `{res.get('cedula', 'N/A')}`\n"
+               f"👤 Nombre: `{res.get('nombre_completo', 'N/A')}`\n"
+               f"📍 Municipio: `{res.get('municipio', 'N/A')}`\n\n"
+               f"🛡 By {OWNER_USER}")
         await update.message.reply_text(msg, parse_mode="Markdown")
     except:
-        await update.message.reply_text("❌ Error en API Nequi.")
+        await update.message.reply_text("❌ Error en la API de Nequi.")
 
 async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id): return
     if not context.args: return
+    
     try:
-        res = requests.post(API_URL_C2, json={"cedula": context.args[0]}, timeout=TIMEOUT).json()
+        url = "https://extract.nequialpha.com/doxing"
+        r = requests.post(url, json={"cedula": context.args[0]}, timeout=TIMEOUT)
+        res = r.json()
         if res.get("success"):
             d = res["data"]
-            mensaje = f"📄 **RESULTADO V2**\n\n🆔 ID: `{d.get('cedula')}`\n👤 Nombre: `{d.get('primer_nombre')} {d.get('primer_apellido')}`\n🏥 EPS: `{d.get('eps')}`\n📍 Ubicación: `{d.get('municipio_residencia')}`"
+            mensaje = (f"📄 **RESULTADO V2**\n\n"
+                       f"🆔 ID: `{d.get('cedula')}`\n"
+                       f"👤 Nombre: `{d.get('primer_nombre')} {d.get('primer_apellido')}`\n"
+                       f"🏥 EPS: `{d.get('eps')}`\n"
+                       f"📍 Residencia: `{d.get('municipio_residencia')}`\n"
+                       f"✅ Estado: OK")
             await update.message.reply_text(mensaje, parse_mode="Markdown")
     except:
         await update.message.reply_text("❌ Error en consulta C2.")
 
 async def mostrar_datos_cedula(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Lógica de base de datos local (ANI)
-    user_id = update.message.from_user.id
-    if not tiene_key_valida(user_id): return
+    # Consulta a la base de datos ANI (V1)
+    if not tiene_key_valida(update.message.from_user.id): return
     if not context.args: return
     
-    cedula = context.args[0]
     conn = None
     try:
         conn = pool.get_connection()
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (cedula,))
+        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (context.args[0],))
         datos = cursor.fetchone()
         if datos:
             msg = (f"🪪 **DATOS CEDULA (V1)**\n\n"
-                   f"👤 Nombres: `{datos['ANINombre1']} {datos['ANINombre2']}`\n"
+                   f"👤 Nombres: `{datos['ANINombre1']} {datos['ANINombre2'] or ''}`\n"
                    f"👤 Apellidos: `{datos['ANIApellido1']} {datos['ANIApellido2']}`\n"
                    f"🏠 Dirección: `{datos['ANIDireccion']}`\n"
                    f"📱 Teléfono: `{datos['ANITelefono']}`")
@@ -116,7 +125,7 @@ async def mostrar_datos_cedula(update: Update, context: ContextTypes.DEFAULT_TYP
     finally:
         if conn: conn.close()
 
-# ======== COMANDOS DE MENÚ ========
+# ======== GESTIÓN DE USUARIOS Y KEYS ========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
@@ -129,12 +138,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /c2 ➛ CONSULTA V2\n"
         "┃ ⚔️ /nequi ➛ CONSULTA NEQUI\n"
         "┃ ⚔️ /placa ➛ CONSULTA PLACA\n"
+        "┃ ⚔️ /llave ➛ CONSULTA ALIAS\n"
         "┃ ⚔️ /redeem ➛ ACTIVAR KEY\n"
         "┃ ⚔️ /info ➛ MI ESTADO\n"
+        "┃ ⚔️ /help ➛ SOPORTE\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-        f"👑 𝙤𝙬𝙣𝙚rer: {OWNER_USER}"
+        f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id == OWNER_ID:
+        await update.message.reply_text("👑 **Admin:** Acceso Ilimitado.")
+        return
+    conn = None
+    try:
+        conn = pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT expiration_date FROM user_keys WHERE user_id = %s AND redeemed = TRUE", (user_id,))
+        res = cursor.fetchone()
+        if res:
+            await update.message.reply_text(f"⏳ **Expira el:** `{res['expiration_date']}`", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ Sin suscripción activa.")
+    finally:
+        if conn: conn.close()
 
 async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args: return
@@ -153,22 +182,22 @@ async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         if conn: conn.close()
 
-# ======== MAIN (EJECUCIÓN) ========
+# ======== MAIN ========
 def main():
-    # TOKEN ACTUALIZADO PARA RAILWAY
+    # TOKEN ACTUALIZADO
     TOKEN = "8717607121:AAEjR8NdGjOCASuqYlfV5bLlCYNG4nBApDg"
     
     app = Application.builder().token(TOKEN).build()
 
-    # Handlers
+    # Registro de Handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cc", mostrar_datos_cedula))
     app.add_handler(CommandHandler("c2", comando_c2))
     app.add_handler(CommandHandler("nequi", comando_nequi))
     app.add_handler(CommandHandler("redeem", redeem))
-    # Puedes agregar los demás del código viejo siguiendo este patrón...
-
-    print("🚀 Bot Activo con Nuevo Token y APIs integradas.")
+    app.add_handler(CommandHandler("info", info_command))
+    
+    print(f"🚀 Bot iniciado como {OWNER_USER} en Railway.")
     app.run_polling()
 
 if __name__ == "__main__":
