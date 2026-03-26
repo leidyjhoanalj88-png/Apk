@@ -13,7 +13,6 @@ BOT_USER = "@doxeos09bot"
 START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 
 # ======== CONFIGURACIÓN DE BASE DE DATOS (RAILWAY) ========
-# Se usan variables de entorno para evitar el error de conexión (111) en Railway.
 try:
     pool = mysql.connector.pooling.MySQLConnectionPool(
         pool_name="pool_db",
@@ -26,7 +25,7 @@ try:
         charset="utf8"
     )
 except Exception as e:
-    print(f"Error en Pool: {e}")
+    print(f"⚠️ Error en Pool: {e}")
 
 # ======== FUNCIONES DE VALIDACIÓN ========
 def tiene_key_valida(user_id):
@@ -58,11 +57,37 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /llave ➛ CONSULTA ALIAS\n"
         "┃ ⚔️ /placa ➛ CONSULTA PLACA\n"
         "┃ ⚔️ /redeem ➛ ACTIVAR KEY\n"
+        "┃ ⚔️ /info ➛ MI SUSCRIPCIÓN\n"
         "┃ ⚔️ /help ➛ SOPORTE TÉCNICO\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
+
+# --- NUEVO COMANDO /INFO ---
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id == OWNER_ID:
+        await update.message.reply_text("👑 **Suscripción:** Ilimitada (Administrador)")
+        return
+
+    conn = None
+    try:
+        conn = pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT expiration_date FROM user_keys WHERE user_id = %s AND redeemed = TRUE"
+        cursor.execute(query, (user_id,))
+        res = cursor.fetchone()
+        
+        if res:
+            fecha = res['expiration_date'].strftime('%Y-%m-%d %H:%M')
+            await update.message.reply_text(f"⏳ **Tu suscripción expira el:** `{fecha}`", parse_mode="Markdown")
+        else:
+            await update.message.reply_text("❌ No tienes una suscripción activa. Usa `/redeem <key>`")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error al consultar info: {e}")
+    finally:
+        if conn: conn.close()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
@@ -73,27 +98,19 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
 
-# Comandos de consulta (Integrando la lógica del segundo código)
-async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ Sin suscripción activa.")
-        return
-    # Lógica de API C2 aquí...
-    await update.message.reply_text("🔎 Consultando base de datos v2...")
-
 # ======== REGISTRO TOTAL DE COMANDOS ========
 def main():
-    # REVISIÓN: Asegúrate de que este token no tenga espacios al inicio o final
+    # TOKEN LIMPIO SIN ESPACIOS
     TOKEN = "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU"
     
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("info", info_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("c2", comando_c2))
-    # Aquí puedes seguir añadiendo el resto de comandos (cc, nequi, etc.)
-
-    print(f"Bot iniciado como {OWNER_USER}")
+    # Aquí agrega los demás: cc, c2, nequi, placa, llave, redeem
+    
+    print(f"Bot activo bajo el mando de {OWNER_USER}")
     application.run_polling()
 
 if __name__ == "__main__":
