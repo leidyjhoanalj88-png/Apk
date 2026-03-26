@@ -23,7 +23,6 @@ httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
 # ======== CONFIGURACIÓN RAILWAY (DATOS REALES DE CAPTURAS) ========
-# Usamos los datos del Proxy Público que ya vimos que están activos
 DB_HOST = os.getenv("DB_HOST", "centerbeam.proxy.rlwy.net")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASSWORD", "RyCNgwehnwQnOiGkMdZsuvHyLpMZZQd")
@@ -56,7 +55,7 @@ PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
 TIMEOUT = 120
 
-# ======== FUNCIONES LÓGICA (SE MANTIENEN IGUAL) ========
+# ======== FUNCIONES LÓGICA ========
 
 def clean(value):
     if value is None or value == "" or value == "null":
@@ -93,19 +92,26 @@ def consultar_llave(alias):
         logger.error(f"Error al consultar llave: {e}")
         return None
 
-def consultar_nequi(telefono):
+# ======== NUEVA FUNCIÓN NEQUI (REEMPLAZANDO API CAÍDA) ========
+def consultar_nequi_scraping(telefono):
+    """Realiza la consulta directamente a la plataforma de Nequi"""
+    url_nequi = "https://conrecarga.nequi.com.co/conrecarga/get-client-name"
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    payload = {"phoneNumber": str(telefono)}
     try:
-        r = requests.post("https://extract.nequialpha.com/consultar",
-                          json={"telefono": str(telefono)},
-                          headers={"X-Api-Key": NEQUI_API_KEY, "Content-Type": "application/json"},
-                          timeout=TIMEOUT)
-        r.raise_for_status()
-        return r.json()
+        r = requests.post(url_nequi, json=payload, headers=headers, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            if "name" in data:
+                return {"success": True, "nombre": data["name"]}
+        return {"success": False, "error": "Número no registrado o error de respuesta."}
     except Exception as e:
-        logger.error(f"Error al consultar Nequi: {e}")
-        return None
+        return {"success": False, "error": str(e)}
 
-# ======== FUNCIONES BD ========
+# ======== FUNCIONES BD (SIN CAMBIOS) ========
 
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID:
@@ -586,6 +592,7 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error en /c2: {e}")
         await update.message.reply_text("❌ Error al procesar la solicitud.")
 
+# ======== COMANDO NEQUI CORREGIDO (SCRAPING DIRECTO) ========
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
         await update.message.reply_text("❌ Sin Key activa.")
@@ -593,24 +600,25 @@ async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("📌 Uso: /nequi <telefono>")
         return
+    
+    telefono = context.args[0]
+    msg = await update.message.reply_text(f"🔍 Buscando titular del número `{telefono}`...", parse_mode="Markdown")
+    
     try:
-        res = consultar_nequi(context.args[0])
-        if not res:
-            await update.message.reply_text("❌ No se obtuvo respuesta de la API.")
-            return
-        mensaje = (
-            f"🔎 Resultado /nequi\n\n"
-            f"📱 Teléfono: {res.get('telefono') or 'No registra'}\n"
-            f"🆔 Cédula: {res.get('cedula') or 'No registra'}\n"
-            f"👤 Nombre: {res.get('nombre_completo') or 'No registra'}\n"
-            f"📍 Municipio: {res.get('municipio') or 'No registra'}\n"
-            f"🗄️ DB: {'Sí' if res.get('db') else 'No'}\n\n"
-            f"💻 Desarrollado por {OWNER_USER}"
-        )
-        await update.message.reply_text(mensaje)
+        res = consultar_nequi_scraping(telefono)
+        if res["success"]:
+            mensaje = (
+                f"🔎 *Resultado /nequi*\n\n"
+                f"📱 *Teléfono:* `{telefono}`\n"
+                f"👤 *Titular:* `{res['nombre']}`\n\n"
+                f"💻 Desarrollado por {OWNER_USER}"
+            )
+            await msg.edit_text(mensaje, parse_mode="Markdown")
+        else:
+            await msg.edit_text(f"❌ Error: {res['error']}")
     except Exception as e:
         logger.error(f"Error en /nequi: {e}")
-        await update.message.reply_text("❌ Error al procesar la solicitud.")
+        await msg.edit_text("❌ Error al procesar la solicitud.")
 
 async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
@@ -715,15 +723,9 @@ SISBEN_USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
 ]
 TIPOS_DOC_SISBEN = {
-    "1": "Registro Civil",
-    "2": "Tarjeta de Identidad",
-    "3": "Cedula de Ciudadania",
-    "4": "Cedula de Extranjeria",
-    "5": "DNI (Pais de origen)",
-    "6": "DNI (Pasaporte)",
-    "7": "Salvoconducto para Refugiado",
-    "8": "Permiso Especial de Permanencia",
-    "9": "Permiso Por Proteccion Temporary",
+    "1": "Registro Civil", "2": "Tarjeta de Identidad", "3": "Cedula de Ciudadania",
+    "4": "Cedula de Extranjeria", "5": "DNI (Pais de origen)", "6": "DNI (Pasaporte)",
+    "7": "Salvoconducto para Refugiado", "8": "Permiso Especial de Permanencia", "9": "Permiso Por Proteccion Temporary",
 }
 
 def consultar_sisben(tipo, numero):
@@ -797,16 +799,13 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tipo = context.args[0].strip()
     numero = context.args[1].strip()
     if tipo not in TIPOS_DOC_SISBEN:
-        await update.message.reply_text("❌ Tipo inválido. Escribe /sisben para ver los tipos.")
+        await update.message.reply_text("❌ Tipo inválido.")
         return
     tipo_nombre = TIPOS_DOC_SISBEN[tipo]
-    msg = await update.message.reply_text(
-        f"🔍 Consultando SISBEN IV...\n⚔️ Tipo: {tipo_nombre}\n⚔️ Doc: `{numero}`",
-        parse_mode="Markdown"
-    )
+    msg = await update.message.reply_text(f"🔍 Consultando SISBEN IV...\n⚔️ Doc: `{numero}`", parse_mode="Markdown")
     resultado = consultar_sisben(tipo, numero)
     if resultado is None:
-        await msg.edit_text("❌ Documento NO encontrado en SISBEN IV.")
+        await msg.edit_text("❌ Documento NO encontrado.")
         return
     if "error" in resultado:
         await msg.edit_text(f"⚠️ Error: {resultado['error']}")
@@ -819,9 +818,8 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto += "\n👤 *DATOS PERSONALES*\n"
     for clave, label in [
         ("nombres", "Nombres"), ("apellidos", "Apellidos"),
-        ("tipo_doc", "Tipo Doc"), ("num_doc", "Número"),
         ("municipio", "Municipio"), ("departamento", "Departamento"),
-        ("ficha", "Ficha"), ("fecha", "Fecha consulta"),
+        ("fecha", "Fecha consulta"),
     ]:
         if clave in resultado:
             texto += f"⚔️ *{label}:* {resultado[clave]}\n"
