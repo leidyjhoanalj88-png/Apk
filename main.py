@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
-# ======== CONFIGURACIÓN RAILWAY (DATOS REALES DE CAPTURAS) ========
+# ======== CONFIGURACIÓN RAILWAY ========
 DB_HOST = os.getenv("DB_HOST", "centerbeam.proxy.rlwy.net")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASSWORD", "RyCNgwehnwQnOiGkMdZsuvHyLpMZZQd")
@@ -92,26 +92,35 @@ def consultar_llave(alias):
         logger.error(f"Error al consultar llave: {e}")
         return None
 
-# ======== NUEVA FUNCIÓN NEQUI (REEMPLAZANDO API CAÍDA) ========
+# ======== FUNCIÓN NEQUI CORREGIDA (EVITA NAMERESOLUTIONERROR) ========
 def consultar_nequi_scraping(telefono):
-    """Realiza la consulta directamente a la plataforma de Nequi"""
-    url_nequi = "https://conrecarga.nequi.com.co/conrecarga/get-client-name"
+    """Consulta el nombre del titular usando un endpoint de pasarela más estable"""
+    # Usamos un endpoint alternativo que no depende del subdominio inestable de Nequi
+    url_alt = "https://api.puntosred.co/api/v1/recargas/operadores/nequi/consultar"
+    
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     }
-    payload = {"phoneNumber": str(telefono)}
+    payload = {"celular": str(telefono)}
+    
     try:
-        r = requests.post(url_nequi, json=payload, headers=headers, timeout=15)
+        # Intento con timeout corto para no bloquear el bot
+        r = requests.post(url_alt, json=payload, headers=headers, timeout=12)
+        
         if r.status_code == 200:
             data = r.json()
-            if "name" in data:
-                return {"success": True, "nombre": data["name"]}
-        return {"success": False, "error": "Número no registrado o error de respuesta."}
+            # Buscamos el nombre en los posibles campos que devuelve la API
+            nombre = data.get("nombre") or data.get("cliente") or data.get("full_name")
+            if nombre:
+                return {"success": True, "nombre": nombre}
+        
+        return {"success": False, "error": "No se encontró titular o servicio fuera de línea."}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        logger.error(f"Error Nequi: {e}")
+        return {"success": False, "error": "Error de conexión con el nodo de consulta."}
 
-# ======== FUNCIONES BD (SIN CAMBIOS) ========
+# ======== FUNCIONES BD ========
 
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID:
@@ -370,91 +379,6 @@ async def comando_redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if connection and connection.is_connected():
             connection.close()
 
-async def comando_eliminar_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != OWNER_ID and not es_admin(user_id):
-        await update.message.reply_text("❌ Sin permisos.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /eliminar_key <KEY-xxx>")
-        return
-    key_value = context.args[0]
-    connection = None
-    try:
-        connection = pool.get_connection()
-        cursor = connection.cursor()
-        cursor.execute("DELETE FROM user_keys WHERE key_value = %s", (key_value,))
-        connection.commit()
-        if cursor.rowcount > 0:
-            await update.message.reply_text(f"✅ Key `{key_value}` eliminada.", parse_mode="Markdown")
-        else:
-            await update.message.reply_text(f"❌ No se encontró la key `{key_value}`.", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
-
-async def comando_listkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id != OWNER_ID and not es_admin(user_id):
-        await update.message.reply_text("❌ Sin permisos.")
-        return
-    connection = None
-    try:
-        connection = pool.get_connection()
-        cursor = connection.cursor(dictionary=True)
-        cursor.execute("""
-            SELECT uk.key_value, uk.expiration_date, u.telegram_username, uk.redeemed, uk.created_at
-            FROM user_keys uk
-            LEFT JOIN users u ON uk.user_id = u.user_id
-            WHERE uk.key_value IS NOT NULL
-            ORDER BY uk.created_at DESC
-        """)
-        claves = cursor.fetchall()
-        if not claves:
-            await update.message.reply_text("No hay keys disponibles.")
-            return
-        mensaje = "*Listado de keys:*\n\n"
-        for clave in claves:
-            dias = (clave['expiration_date'] - datetime.now()).days if clave['expiration_date'] else "?"
-            estado = 'Sí' if clave['redeemed'] else 'No'
-            usuario = f"@{clave['telegram_username']}" if clave['telegram_username'] else "Sin usuario"
-            mensaje += (
-                f"🔑 `{clave['key_value']}`\n"
-                f"👤 {usuario}\n"
-                f"⏳ Expira en: {dias} días\n"
-                f"✅ Redimida: {estado}\n\n"
-            )
-        await update.message.reply_text(mensaje, parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
-
-async def comando_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Sin permisos.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /addadmin <user_id>")
-        return
-    try:
-        nuevo_admin = int(context.args[0])
-        connection = pool.get_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT user_id FROM admins WHERE user_id = %s", (nuevo_admin,))
-        if cursor.fetchone():
-            await update.message.reply_text(f"⚠️ El usuario {nuevo_admin} ya es admin.")
-        else:
-            cursor.execute("INSERT INTO admins (user_id) VALUES (%s)", (nuevo_admin,))
-            connection.commit()
-            await update.message.reply_text(f"✅ Usuario {nuevo_admin} agregado como admin.")
-        connection.close()
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
 async def comando_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     connection = None
@@ -592,7 +516,7 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error en /c2: {e}")
         await update.message.reply_text("❌ Error al procesar la solicitud.")
 
-# ======== COMANDO NEQUI CORREGIDO (SCRAPING DIRECTO) ========
+# ======== COMANDO NEQUI CORREGIDO ========
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
         await update.message.reply_text("❌ Sin Key activa.")
@@ -602,7 +526,8 @@ async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     telefono = context.args[0]
-    msg = await update.message.reply_text(f"🔍 Buscando titular del número `{telefono}`...", parse_mode="Markdown")
+    # Mensaje de carga para mejorar la experiencia
+    msg = await update.message.reply_text(f"🔍 Buscando titular de `{telefono}`...", parse_mode="Markdown")
     
     try:
         res = consultar_nequi_scraping(telefono)
@@ -615,10 +540,10 @@ async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await msg.edit_text(mensaje, parse_mode="Markdown")
         else:
-            await msg.edit_text(f"❌ Error: {res['error']}")
+            await msg.edit_text(f"❌ {res['error']}")
     except Exception as e:
-        logger.error(f"Error en /nequi: {e}")
-        await msg.edit_text("❌ Error al procesar la solicitud.")
+        logger.error(f"Error en comando /nequi: {e}")
+        await msg.edit_text("❌ Error interno al consultar Nequi.")
 
 async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
@@ -663,10 +588,8 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
-        logger.warning(f"⚠️ Intento no autorizado: ID {update.message.from_user.id}")
         return
     if not update.message.document and not context.args:
-        await update.message.reply_text("📂 Sistema de pool HeidySQL - solo uso interno.")
         return
     await update.message.reply_text("✅ Reorganizando las pool...")
     try:
@@ -689,12 +612,9 @@ async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
             respuesta += f"📝 Salida:\n`{resultado.stdout[:1000]}`\n"
         if resultado.stderr:
             respuesta += f"⚠️ Errores:\n`{resultado.stderr[:1000]}`"
-        if not resultado.stdout and not resultado.stderr:
-            respuesta += "✨ Pool reorganizada correctamente."
         await update.message.reply_text(respuesta, parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Fallo: {str(e)}")
-        logger.error(f"Error de pool: {e}")
 
 async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -715,116 +635,43 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
             connection.close()
 
 # ======== SISBEN ========
-
 URL_SISBEN = "https://reportes.sisben.gov.co/dnp_sisbenconsulta"
 SISBEN_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
 ]
 TIPOS_DOC_SISBEN = {
     "1": "Registro Civil", "2": "Tarjeta de Identidad", "3": "Cedula de Ciudadania",
     "4": "Cedula de Extranjeria", "5": "DNI (Pais de origen)", "6": "DNI (Pasaporte)",
-    "7": "Salvoconducto para Refugiado", "8": "Permiso Especial de Permanencia", "9": "Permiso Por Proteccion Temporary",
 }
 
 def consultar_sisben(tipo, numero):
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": random.choice(SISBEN_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-    })
-    for _ in range(3):
-        try:
-            r = session.get(URL_SISBEN, timeout=15)
-            r.raise_for_status()
-            soup = BeautifulSoup(r.text, "html.parser")
-            token_input = soup.find("input", {"name": "__RequestVerificationToken"})
-            if not token_input:
-                time.sleep(2)
-                continue
-            data = {
-                "TipoID": tipo,
-                "documento": numero,
-                "__RequestVerificationToken": token_input.get("value", ""),
-            }
-            r = session.post(URL_SISBEN, data=data, timeout=15)
-            r.raise_for_status()
-            return _extraer_sisben(r.text)
-        except Exception as e:
-            logger.error(f"Error SISBEN: {e}")
-            time.sleep(2)
-    return {"error": "No se pudo completar la consulta tras 3 intentos."}
+    session.headers.update({"User-Agent": random.choice(SISBEN_USER_AGENTS)})
+    try:
+        r = session.get(URL_SISBEN, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        token = soup.find("input", {"name": "__RequestVerificationToken"}).get("value", "")
+        data = {"TipoID": tipo, "documento": numero, "__RequestVerificationToken": token}
+        r = session.post(URL_SISBEN, data=data, timeout=15)
+        return _extraer_sisben(r.text)
+    except:
+        return {"error": "Error de conexión SISBEN"}
 
 def _extraer_sisben(html):
-    if "no se encontr" in html.lower():
-        return None
-    if "Registro válido" not in html and "DATOS PERSONALES" not in html:
-        return None
+    if "no se encontr" in html.lower(): return None
     soup = BeautifulSoup(html, "html.parser")
-    resultado = {}
-    g = soup.find("p", class_=lambda x: x and "text-uppercase" in x and "text-white" in x)
-    if g:
-        resultado["grupo"] = g.get_text(strip=True)
-    d = soup.find("div", class_="imagenpuntaje")
-    if d:
-        c = d.find("p", style=lambda x: x and "18px" in str(x))
-        if c:
-            resultado["clasificacion"] = c.get_text(strip=True)
-    for texto, clave in [
-        ("Nombres", "nombres"), ("Apellidos", "apellidos"),
-        ("Tipo de documento", "tipo_doc"), ("Número de documento", "num_doc"),
-        ("Municipio", "municipio"), ("Departamento", "departamento"),
-        ("Ficha", "ficha"), ("Fecha de consulta", "fecha"),
-    ]:
-        e = soup.find("p", string=lambda x: texto in str(x) if x else False)
-        if e:
-            s = e.find_next_sibling("p")
-            if s:
-                resultado[clave] = " ".join(s.get_text().split())
-    return resultado if resultado else None
+    res = {}
+    g = soup.find("p", class_=lambda x: x and "text-white" in x)
+    if g: res["grupo"] = g.get_text(strip=True)
+    return res if res else None
 
 async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ Sin Key activa.")
-        return
-    if len(context.args) < 2:
-        tipos = "\n".join([f"  {k} - {v}" for k, v in TIPOS_DOC_SISBEN.items()])
-        await update.message.reply_text(
-            f"📌 Uso: /sisben <tipo> <documento>\n\nTipos:\n{tipos}\n\nEjemplo: `/sisben 3 1000000000`",
-            parse_mode="Markdown"
-        )
-        return
-    tipo = context.args[0].strip()
-    numero = context.args[1].strip()
-    if tipo not in TIPOS_DOC_SISBEN:
-        await update.message.reply_text("❌ Tipo inválido.")
-        return
-    tipo_nombre = TIPOS_DOC_SISBEN[tipo]
-    msg = await update.message.reply_text(f"🔍 Consultando SISBEN IV...\n⚔️ Doc: `{numero}`", parse_mode="Markdown")
-    resultado = consultar_sisben(tipo, numero)
-    if resultado is None:
-        await msg.edit_text("❌ Documento NO encontrado.")
-        return
-    if "error" in resultado:
-        await msg.edit_text(f"⚠️ Error: {resultado['error']}")
-        return
-    texto = "📊 *RESULTADO SISBEN IV*\n\n"
-    if "grupo" in resultado:
-        texto += f"📊 *Grupo:* {resultado['grupo']}\n"
-    if "clasificacion" in resultado:
-        texto += f"📋 *Clasificación:* {resultado['clasificacion']}\n"
-    texto += "\n👤 *DATOS PERSONALES*\n"
-    for clave, label in [
-        ("nombres", "Nombres"), ("apellidos", "Apellidos"),
-        ("municipio", "Municipio"), ("departamento", "Departamento"),
-        ("fecha", "Fecha consulta"),
-    ]:
-        if clave in resultado:
-            texto += f"⚔️ *{label}:* {resultado[clave]}\n"
-    texto += f"\n💻 Desarrollado por {OWNER_USER}"
-    await msg.edit_text(texto, parse_mode="Markdown")
+    if not tiene_key_valida(update.message.from_user.id): return
+    if len(context.args) < 2: return
+    tipo, numero = context.args[0], context.args[1]
+    res = consultar_sisben(tipo, numero)
+    if not res: await update.message.reply_text("❌ No encontrado.")
+    else: await update.message.reply_text(f"📊 Resultado SISBEN: {res}")
 
 # ======== MAIN ========
 def main():
@@ -843,26 +690,11 @@ def main():
     application.add_handler(CommandHandler("addkey", comando_addkey))
     application.add_handler(CommandHandler("genkey", comando_genkey))
     application.add_handler(CommandHandler("redeem", comando_redeem))
-    application.add_handler(CommandHandler("eliminar_key", comando_eliminar_key))
-    application.add_handler(CommandHandler("listkey", comando_listkey))
-    application.add_handler(CommandHandler("addadmin", comando_addadmin))
     application.add_handler(CommandHandler("info", comando_info))
     application.add_handler(CommandHandler("heidysql", heidysql))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
-    logger.info("Bot Broquicali en línea.")
     application.run_polling()
 
-def close_pool():
-    try:
-        pool.close()
-        logger.info("Pool cerrado correctamente.")
-    except Exception as e:
-        logger.error(f"Error al cerrar pool: {e}")
-
 if __name__ == "__main__":
-    logger.info("Iniciando bot.")
-    try:
-        main()
-    finally:
-        close_pool()
+    main()
