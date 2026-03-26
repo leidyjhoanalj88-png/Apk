@@ -22,16 +22,21 @@ logger = logging.getLogger(__name__)
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
-# ======== CONFIGURACIÓN RAILWAY ========
+# ======== CONFIGURACIÓN RAILWAY (ACTUALIZADA) ========
 DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASS = os.getenv("DB_PASSWORD", "nabo94nabo94")
 DB_NAME = os.getenv("DB_NAME", "ani")
 DB_PORT = os.getenv("DB_PORT", "3306")
-TOKEN = os.getenv("TELEGRAM_TOKEN", "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU")
+TOKEN = os.getenv("TELEGRAM_TOKEN", "8717607121:AAEjR8NdGjOCASuqYlfV5bL1CYNG4nBApDg")
 OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@doxeos09bot"
 OWNER_ID = 8114050673
+
+# VARIABLES ADICIONALES DE TUS CAPTURAS
+API_URL_C2 = os.getenv("API_URL", "https://extract.nequialpha.com/doxing")
+NEQUI_API_KEY = os.getenv("NEQUI_API_KEY", "M43289032FH23B")
+START_IMAGE_URL = os.getenv("START_IMAGE_URL", "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-1")
 
 pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="pool_db",
@@ -45,13 +50,11 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 )
 
 # ======== CONFIG APIs ========
-API_URL_C2 = "https://extract.nequialpha.com/doxing"
 PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
-START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
 TIMEOUT = 120
 
-# ======== UTILS ========
+# ======== EL RESTO DEL CÓDIGO SE MANTIENE IGUAL ========
 
 def clean(value):
     if value is None or value == "" or value == "null":
@@ -92,7 +95,7 @@ def consultar_nequi(telefono):
     try:
         r = requests.post("https://extract.nequialpha.com/consultar",
                           json={"telefono": str(telefono)},
-                          headers={"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"},
+                          headers={"X-Api-Key": NEQUI_API_KEY, "Content-Type": "application/json"},
                           timeout=TIMEOUT)
         r.raise_for_status()
         return r.json()
@@ -718,7 +721,7 @@ TIPOS_DOC_SISBEN = {
     "6": "DNI (Pasaporte)",
     "7": "Salvoconducto para Refugiado",
     "8": "Permiso Especial de Permanencia",
-    "9": "Permiso Por Proteccion Temporal",
+    "9": "Permiso Por Proteccion Temporary",
 }
 
 def consultar_sisben(tipo, numero):
