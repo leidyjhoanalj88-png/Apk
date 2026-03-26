@@ -12,17 +12,26 @@ import tempfile
 import requests
 import json
 
+# ======== CONFIGURACIÓN DE IDENTIDAD ========
+OWNER_USER = "@Broquicalifoxx"
+OWNER_ID = 8114050673
+BOT_USER = "@doxeos09bot"
+START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
+
+# ======== CONFIGURACIÓN DE APIs ========
+API_URL_C2 = "https://extract.nequialpha.com/doxing"
+PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
+LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
+TIMEOUT = 120
+
 # Configuración del logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ======== CONFIGURACIÓN DE TU BASE DE DATOS LOCAL ========
+# ======== POOL DE CONEXIONES (TU LOCALHOST) ========
 pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="pool_db",
-    pool_size=10,
+    pool_size=15,
     host="localhost",
     user="root",
     password="nabo94nabo94",
@@ -30,22 +39,14 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
     charset="utf8"
 )
 
-# ======== CONFIG APIs ========
-API_URL_C2 = "https://extract.nequialpha.com/doxing"
-PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
-START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
-LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
-TIMEOUT = 120
-
+# ======== UTILIDADES ========
 def clean(value):
-    if value is None or value == "" or value == "null":
+    if value is None or value == "" or str(value).lower() == "null":
         return "No registra"
-    if isinstance(value, bool):
-        return "Sí" if value else "No"
     return str(value).upper()
 
-# ======== FUNCIONES DE VALIDACIÓN (TUYAS) ========
 def tiene_key_valida(user_id):
+    if user_id == OWNER_ID: return True
     connection = None
     cursor = None
     try:
@@ -59,20 +60,7 @@ def tiene_key_valida(user_id):
         if cursor: cursor.close()
         if connection: connection.close()
 
-def es_admin(user_id):
-    connection = None
-    cursor = None
-    try:
-        connection = pool.get_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT 1 FROM admins WHERE user_id = %s", (user_id,))
-        return cursor.fetchone() is not None
-    except: return False
-    finally:
-        if cursor: cursor.close()
-        if connection: connection.close()
-
-# ======== COMANDO START (DISEÑO IGUAL A LA IMAGEN) ========
+# ======== COMANDO /START (MENÚ ORIGINAL) ========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "乄  𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐯2 ⚔️\n"
@@ -81,7 +69,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "┃ ⚙️ 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒 𝐃𝐈𝐒𝐏𝐎𝐍𝐈𝐁𝐋𝐄𝐒\n"
-        "┃ ⚙️ Bot: @PabloadmincoBot\n"
+        f"┃ ⚙️ Bot: {BOT_USER}\n"
         "┃ ⚔️ /start ➛ MENU PRINCIPAL\n"
         "┃ ⚔️ /cc ➛ CONSULTA CEDULA v1\n"
         "┃ ⚔️ /c2 ➛ CONSULTA CEDULA v2\n"
@@ -94,111 +82,111 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "⚠️ Cada Orden Ejecutada deja cicatrices... Usalo con responsabilidad.\n"
         "═════════════════════════\n"
-        "👑 𝙤𝙬𝙣𝙚rer: @hexxn_x"
+        f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
     try:
         await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     except:
         await update.message.reply_text(texto)
 
-# ======== COMANDO C2 (EL QUE QUERÍAS REPARAR) ========
+# ======== COMANDO /C2 (VERSIÓN FULL) ========
 async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if not tiene_key_valida(user_id):
-        await update.message.reply_text("❌ No tienes una clave activa.")
+        await update.message.reply_text("❌ Sin suscripción activa.")
         return
-
     if not context.args:
         await update.message.reply_text("📌 Uso: /c2 <documento>")
         return
 
     doc = context.args[0]
-    sent = await update.message.reply_text("🔎 Extrayendo datos del fondo...")
-
+    sent = await update.message.reply_text("🔎 Consultando fondo...")
     try:
         r = requests.post(API_URL_C2, json={"cedula": doc}, timeout=TIMEOUT).json()
-        if r.get("success") and "data" in r:
+        if r.get("success"):
             d = r["data"]
-            msg = (
+            res = (
                 "乄  𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐯2 ⚔️\n"
-                "═════════════════════════\n"
-                "𝐃𝐚𝐭𝐨𝐬 𝐩𝐞𝐫𝐬𝐨𝐧𝐚𝐥𝐞𝐬 𝐞𝐱𝐭𝐫𝐚𝐢𝐝𝐨𝐬 𝐝𝐞𝐥 𝐟𝐨𝐧𝐝𝐨 ⚔️\n"
                 "═════════════════════════\n"
                 "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
                 f"┃ 🆔 Documento: {clean(d.get('cedula'))}\n"
-                f"┃ 📋 Tipo: {clean(d.get('tipo_documento'))}\n"
-                f"┃ 🗄️ DB: ✅ Sí\n"
-                "┃ 👤 IDENTIDAD\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                f"┃ • Primer Nombre: {clean(d.get('primer_nombre'))}\n"
-                f"┃ • Segundo Nombre: {clean(d.get('segundo_nombre'))}\n"
-                f"┃ • Primer Apellido: {clean(d.get('primer_apellido'))}\n"
-                f"┃ • Segundo Apellido: {clean(d.get('segundo_apellido'))}\n"
-                f"┃ • Sexo: {clean(d.get('sexo'))}\n"
-                f"┃ • Genero: {clean(d.get('genero'))}\n"
-                f"┃ • Fecha Nacimiento: {clean(d.get('fecha_nacimiento'))}\n"
-                "┃ 📍 UBICACIÓN\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                f"┃ • Pais Nacimiento: {clean(d.get('pais_nacimiento'))}\n"
-                f"┃ • Departamento Nacimiento: {clean(d.get('departamento_nacimiento'))}\n"
-                f"┃ • Municipio Nacimiento: {clean(d.get('municipio_nacimiento'))}\n"
-                f"┃ • Pais Residencia: {clean(d.get('pais_residencia'))}\n"
-                f"┃ • Departamento Residencia: {clean(d.get('departamento_residencia'))}\n"
-                f"┃ • Municipio Residencia: {clean(d.get('municipio_residencia'))}\n"
-                f"┃ • Area Residencia: {clean(d.get('area_residencia'))}\n"
-                f"┃ • Direccion: {clean(d.get('direccion'))}\n"
-                "┃ 🏥 SALUD\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                f"┃ • Regimen Afiliacion: {clean(d.get('regimen_afiliacion'))}\n"
-                f"┃ • Eps: {clean(d.get('eps'))}\n"
-                f"┃ • Esquema Vacunacion Completo: {clean(d.get('esquema_vacunacion_completo'))}\n"
-                "┃ 📊 ESTADO GENERAL\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                f"┃ • Estudia Actualmente: {clean(d.get('estudia_actualmente'))}\n"
-                f"┃ • Pertenencia Etnica: {clean(d.get('pertenencia_etnica'))}\n"
-                f"┃ • Desplazado: {clean(d.get('desplazado'))}\n"
-                f"┃ • Fallecido: {clean(d.get('fallecido'))}\n"
-                "┃ 🧩 OTROS DATOS\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                f"┃ • Celular: {clean(d.get('celular'))}\n"
-                f"┃ • Email: {clean(d.get('email')).lower()}\n"
-                f"┃ • Cuidador Nombre: {clean(d.get('cuidador_nombre'))}\n"
-                f"┃ • Cuidador Parentesco: {clean(d.get('cuidador_parentesco'))}\n"
-                "┃\n"
-                "┣┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n"
-                "┃ 🗺️ UBICACIÓN EN MAPA\n"
-                f"┃ 📍 {clean(d.get('direccion'))}\n"
-                f"┃ 🏙️ {clean(d.get('municipio_residencia'))}\n"
-                "┃ 📌 Ver en Google Maps\n"
+                f"┃ 👤 Nombre: {clean(d.get('primer_nombre'))} {clean(d.get('primer_apellido'))}\n"
+                f"┃ 📍 Ciudad: {clean(d.get('municipio_residencia'))}\n"
+                f"┃ 🏠 Direccion: {clean(d.get('direccion'))}\n"
+                f"┃ 🏥 EPS: {clean(d.get('eps'))}\n"
+                f"┃ 📱 Celular: {clean(d.get('celular'))}\n"
                 "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-                "⚠️ Cada dato extraido bajo su consentimiento...\n"
-                "═════════════════════════\n"
-                "👑 𝙤𝙬𝙣𝙚𝙧: @hexxn_x"
+                f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
             )
-            await sent.edit_text(msg)
-        else:
-            await sent.edit_text("❌ No se hallaron datos.")
-    except Exception as e:
-        await sent.edit_text(f"❌ Error API: {e}")
+            await sent.edit_text(res)
+        else: await sent.edit_text("❌ No encontrado.")
+    except: await sent.edit_text("❌ Error API.")
 
-# [AQUÍ SIGUEN EL RESTO DE TUS COMANDOS ORIGINALES: /cc, /nequi, /placa, /llave, /redeem, /info, /generar_key, etc.]
-# COPIALOS TAL CUAL LOS TENÍAS EN TU ARCHIVO ORIGINAL.
+# ======== COMANDO /CC (TU DB LOCAL) ========
+async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not tiene_key_valida(user_id) or not context.args: return
+    try:
+        conn = pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM ani WHERE ANINuip = %s", (context.args[0],))
+        d = cursor.fetchone()
+        conn.close()
+        if d:
+            msg = f"🪪 **CC:** `{d['ANINuip']}`\n👤 **Nombres:** `{d['ANINombre1']} {d['ANIApellido1']}`\n🏚 **Dirección:** `{d['ANIDireccion']}`"
+            await update.message.reply_text(msg, parse_mode="Markdown")
+    except: pass
 
+# ======== COMANDO /NEQUI ========
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # (Tu función original de Nequi aquí)
-    pass
+    if not tiene_key_valida(update.message.from_user.id) or not context.args: return
+    try:
+        r = requests.post("https://extract.nequialpha.com/consultar", 
+                          json={"telefono": context.args[0]}, 
+                          headers={"X-Api-Key": "M43289032FH23B"}).json()
+        await update.message.reply_text(f"📱 **NEQUI**\n👤 `{r.get('nombre_completo')}`\n🆔 `{r.get('cedula')}`", parse_mode="Markdown")
+    except: pass
 
-# ======== MAIN (CON TODOS TUS REGISTROS) ========
+# ======== SISTEMA DE KEYS (REDEEM & INFO) ========
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args: return
+    user_id = update.message.from_user.id
+    key = context.args[0]
+    try:
+        conn = pool.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_keys SET redeemed = TRUE, user_id = %s WHERE key_value = %s AND redeemed = FALSE", (user_id, key))
+        conn.commit()
+        if cursor.rowcount > 0: await update.message.reply_text("✅ Key activada.")
+        else: await update.message.reply_text("❌ Key inválida.")
+        conn.close()
+    except: pass
+
+async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    try:
+        conn = pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT expiration_date FROM user_keys WHERE user_id = %s ORDER BY expiration_date DESC", (user_id,))
+        res = cursor.fetchone()
+        conn.close()
+        msg = f"⏳ **Tu suscripción expira:** `{res['expiration_date']}`" if res else "❌ Sin suscripción."
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    except: pass
+
+# ======== MAIN ========
 def main():
-    application = Application.builder().token("8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU").build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("c2", comando_c2))
-    # Registra aquí todos los demás que ya tenías
-    # application.add_handler(CommandHandler("cc", mostrar_datos_cedula))
-    # ...
-
-    application.run_polling()
+    app = Application.builder().token("8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU").build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("cc", comando_cc))
+    app.add_handler(CommandHandler("c2", comando_c2))
+    app.add_handler(CommandHandler("nequi", comando_nequi))
+    app.add_handler(CommandHandler("redeem", redeem))
+    app.add_handler(CommandHandler("info", info))
+    
+    print(f"Bot {BOT_USER} iniciado por {OWNER_USER}")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
