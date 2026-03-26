@@ -1,4 +1,4 @@
-import mysql.connector
+Import mysql.connector
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from mysql.connector import pooling
@@ -611,8 +611,10 @@ async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📌 Uso: /llave <alias>")
         return
     alias = context.args[0]
+    # Intentar con y sin @ para mayor compatibilidad
     try:
         res = consultar_llave(alias)
+        # Si devuelve null o vacío, intentar sin @
         if (res is None or res == "null") and alias.startswith("@"):
             res = consultar_llave(alias[1:])
         mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
