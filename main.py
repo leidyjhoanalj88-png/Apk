@@ -12,7 +12,7 @@ OWNER_ID = 8114050673
 BOT_USER = "@doxeos09bot"
 START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 
-# ======== CONFIGURACIÓN DE BASE DE DATOS (RAILWAY) ========
+# ======== CONFIGURACIÓN DE BASE DE DATOS (RAILWAY SAFE) ========
 try:
     pool = mysql.connector.pooling.MySQLConnectionPool(
         pool_name="pool_db",
@@ -25,7 +25,7 @@ try:
         charset="utf8"
     )
 except Exception as e:
-    print(f"⚠️ Error en Pool: {e}")
+    print(f"⚠️ Error en Pool de DB: {e}")
 
 # ======== FUNCIONES DE VALIDACIÓN ========
 def tiene_key_valida(user_id):
@@ -64,13 +64,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
 
-# --- NUEVO COMANDO /INFO ---
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if user_id == OWNER_ID:
         await update.message.reply_text("👑 **Suscripción:** Ilimitada (Administrador)")
         return
-
     conn = None
     try:
         conn = pool.get_connection()
@@ -78,40 +76,33 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = "SELECT expiration_date FROM user_keys WHERE user_id = %s AND redeemed = TRUE"
         cursor.execute(query, (user_id,))
         res = cursor.fetchone()
-        
         if res:
-            fecha = res['expiration_date'].strftime('%Y-%m-%d %H:%M')
-            await update.message.reply_text(f"⏳ **Tu suscripción expira el:** `{fecha}`", parse_mode="Markdown")
+            await update.message.reply_text(f"⏳ **Expiración:** `{res['expiration_date']}`", parse_mode="Markdown")
         else:
-            await update.message.reply_text("❌ No tienes una suscripción activa. Usa `/redeem <key>`")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error al consultar info: {e}")
+            await update.message.reply_text("❌ Sin suscripción activa.")
+    except:
+        await update.message.reply_text("❌ Error al consultar base de datos.")
     finally:
         if conn: conn.close()
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = (
-        "🛠 **SOPORTE TÉCNICO**\n"
-        "═════════════════════════\n"
-        f"Cualquier duda contacta al Admin: {OWNER_USER}\n"
-        "ID Soporte: `8114050673`"
-    )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
+    await update.message.reply_text(f"🛠 **SOPORTE**\nAdmin: {OWNER_USER}\nID: `{OWNER_ID}`", parse_mode="Markdown")
 
-# ======== REGISTRO TOTAL DE COMANDOS ========
+# ======== MAIN (CON TOKEN NUEVO) ========
 def main():
-    # TOKEN LIMPIO SIN ESPACIOS
-    TOKEN = "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU"
+    # TOKEN ACTUALIZADO
+    TOKEN = "8717607121:AAEjR8NdGjOCASuqYlfV5bLlCYNG4nBApDg"
     
-    application = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("info", info_command))
-    application.add_handler(CommandHandler("help", help_command))
-    # Aquí agrega los demás: cc, c2, nequi, placa, llave, redeem
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("info", info_command))
+    app.add_handler(CommandHandler("help", help_command))
     
-    print(f"Bot activo bajo el mando de {OWNER_USER}")
-    application.run_polling()
+    # Registra aquí tus otros comandos (cc, c2, nequi, etc.)
+    
+    print("🚀 Bot en línea con el nuevo token.")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
