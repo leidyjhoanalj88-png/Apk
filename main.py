@@ -22,18 +22,20 @@ logger = logging.getLogger(__name__)
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
-# ======== CONFIGURACIÓN RAILWAY (ACTUALIZADA) ========
-DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal")
+# ======== CONFIGURACIÓN RAILWAY (DATOS REALES DE CAPTURAS) ========
+# Usamos los datos del Proxy Público que ya vimos que están activos
+DB_HOST = os.getenv("DB_HOST", "centerbeam.proxy.rlwy.net")
 DB_USER = os.getenv("DB_USER", "root")
-DB_PASS = os.getenv("DB_PASSWORD", "nabo94nabo94")
-DB_NAME = os.getenv("DB_NAME", "ani")
-DB_PORT = os.getenv("DB_PORT", "3306")
+DB_PASS = os.getenv("DB_PASSWORD", "RyCNgwehnwQnOiGkMdZsuvHyLpMZZQd")
+DB_NAME = os.getenv("DB_NAME", "railway")
+DB_PORT = os.getenv("DB_PORT", "24155")
+
 TOKEN = os.getenv("TELEGRAM_TOKEN", "8717607121:AAEjR8NdGjOCASuqYlfV5bL1CYNG4nBApDg")
 OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@doxeos09bot"
 OWNER_ID = 8114050673
 
-# VARIABLES ADICIONALES DE TUS CAPTURAS
+# VARIABLES ADICIONALES
 API_URL_C2 = os.getenv("API_URL", "https://extract.nequialpha.com/doxing")
 NEQUI_API_KEY = os.getenv("NEQUI_API_KEY", "M43289032FH23B")
 START_IMAGE_URL = os.getenv("START_IMAGE_URL", "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-1")
@@ -54,7 +56,7 @@ PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
 TIMEOUT = 120
 
-# ======== EL RESTO DEL CÓDIGO SE MANTIENE IGUAL ========
+# ======== FUNCIONES LÓGICA (SE MANTIENEN IGUAL) ========
 
 def clean(value):
     if value is None or value == "" or value == "null":
