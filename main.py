@@ -1,4 +1,4 @@
-Import mysql.connector
+import mysql.connector
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from mysql.connector import pooling
@@ -10,7 +10,9 @@ import requests
 import json
 import tempfile
 import subprocess
+import time
 from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -252,6 +254,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
         "┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
+        "┃ ⚔️ /sisben ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐒𝐈𝐒𝐁𝐄𝐍 𝐈𝐕\n"
         "┃ ⚔️ /redeem ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
         "┃ ⚔️ /info ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
         "┃ ⚔️ /help ➛ 𝐀𝐘𝐔𝐃𝐀\n"
@@ -275,6 +278,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>📱 /nequi</b> [telefono] - Consulta Nequi\n\n"
         "<b>🔑 /llave</b> [alias] - Consulta alias\n\n"
         "<b>🚗 /placa</b> [placa] - Consulta placa\n\n"
+        "<b>📊 /sisben</b> [tipo] [documento] - Consulta SISBEN IV\n\n"
         "<b>🎫 /redeem</b> [KEY-xxx] - Activar key\n\n"
         "<b>🔒 /info</b> - Ver mi suscripción\n\n"
         f"<b>💻 Desarrollado por {OWNER_USER}</b>",
@@ -611,10 +615,8 @@ async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("📌 Uso: /llave <alias>")
         return
     alias = context.args[0]
-    # Intentar con y sin @ para mayor compatibilidad
     try:
         res = consultar_llave(alias)
-        # Si devuelve null o vacío, intentar sin @
         if (res is None or res == "null") and alias.startswith("@"):
             res = consultar_llave(alias[1:])
         mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
@@ -699,6 +701,128 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if connection and connection.is_connected():
             connection.close()
 
+# ======== SISBEN ========
+
+URL_SISBEN = "https://reportes.sisben.gov.co/dnp_sisbenconsulta"
+SISBEN_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+]
+TIPOS_DOC_SISBEN = {
+    "1": "Registro Civil",
+    "2": "Tarjeta de Identidad",
+    "3": "Cedula de Ciudadania",
+    "4": "Cedula de Extranjeria",
+    "5": "DNI (Pais de origen)",
+    "6": "DNI (Pasaporte)",
+    "7": "Salvoconducto para Refugiado",
+    "8": "Permiso Especial de Permanencia",
+    "9": "Permiso Por Proteccion Temporal",
+}
+
+def consultar_sisben(tipo, numero):
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": random.choice(SISBEN_USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
+    })
+    for _ in range(3):
+        try:
+            r = session.get(URL_SISBEN, timeout=15)
+            r.raise_for_status()
+            soup = BeautifulSoup(r.text, "html.parser")
+            token_input = soup.find("input", {"name": "__RequestVerificationToken"})
+            if not token_input:
+                time.sleep(2)
+                continue
+            data = {
+                "TipoID": tipo,
+                "documento": numero,
+                "__RequestVerificationToken": token_input.get("value", ""),
+            }
+            r = session.post(URL_SISBEN, data=data, timeout=15)
+            r.raise_for_status()
+            return _extraer_sisben(r.text)
+        except Exception as e:
+            logger.error(f"Error SISBEN: {e}")
+            time.sleep(2)
+    return {"error": "No se pudo completar la consulta tras 3 intentos."}
+
+def _extraer_sisben(html):
+    if "no se encontr" in html.lower():
+        return None
+    if "Registro válido" not in html and "DATOS PERSONALES" not in html:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    resultado = {}
+    g = soup.find("p", class_=lambda x: x and "text-uppercase" in x and "text-white" in x)
+    if g:
+        resultado["grupo"] = g.get_text(strip=True)
+    d = soup.find("div", class_="imagenpuntaje")
+    if d:
+        c = d.find("p", style=lambda x: x and "18px" in str(x))
+        if c:
+            resultado["clasificacion"] = c.get_text(strip=True)
+    for texto, clave in [
+        ("Nombres", "nombres"), ("Apellidos", "apellidos"),
+        ("Tipo de documento", "tipo_doc"), ("Número de documento", "num_doc"),
+        ("Municipio", "municipio"), ("Departamento", "departamento"),
+        ("Ficha", "ficha"), ("Fecha de consulta", "fecha"),
+    ]:
+        e = soup.find("p", string=lambda x: texto in str(x) if x else False)
+        if e:
+            s = e.find_next_sibling("p")
+            if s:
+                resultado[clave] = " ".join(s.get_text().split())
+    return resultado if resultado else None
+
+async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if len(context.args) < 2:
+        tipos = "\n".join([f"  {k} - {v}" for k, v in TIPOS_DOC_SISBEN.items()])
+        await update.message.reply_text(
+            f"📌 Uso: /sisben <tipo> <documento>\n\nTipos:\n{tipos}\n\nEjemplo: `/sisben 3 1000000000`",
+            parse_mode="Markdown"
+        )
+        return
+    tipo = context.args[0].strip()
+    numero = context.args[1].strip()
+    if tipo not in TIPOS_DOC_SISBEN:
+        await update.message.reply_text("❌ Tipo inválido. Escribe /sisben para ver los tipos.")
+        return
+    tipo_nombre = TIPOS_DOC_SISBEN[tipo]
+    msg = await update.message.reply_text(
+        f"🔍 Consultando SISBEN IV...\n⚔️ Tipo: {tipo_nombre}\n⚔️ Doc: `{numero}`",
+        parse_mode="Markdown"
+    )
+    resultado = consultar_sisben(tipo, numero)
+    if resultado is None:
+        await msg.edit_text("❌ Documento NO encontrado en SISBEN IV.")
+        return
+    if "error" in resultado:
+        await msg.edit_text(f"⚠️ Error: {resultado['error']}")
+        return
+    texto = "📊 *RESULTADO SISBEN IV*\n\n"
+    if "grupo" in resultado:
+        texto += f"📊 *Grupo:* {resultado['grupo']}\n"
+    if "clasificacion" in resultado:
+        texto += f"📋 *Clasificación:* {resultado['clasificacion']}\n"
+    texto += "\n👤 *DATOS PERSONALES*\n"
+    for clave, label in [
+        ("nombres", "Nombres"), ("apellidos", "Apellidos"),
+        ("tipo_doc", "Tipo Doc"), ("num_doc", "Número"),
+        ("municipio", "Municipio"), ("departamento", "Departamento"),
+        ("ficha", "Ficha"), ("fecha", "Fecha consulta"),
+    ]:
+        if clave in resultado:
+            texto += f"⚔️ *{label}:* {resultado[clave]}\n"
+    texto += f"\n💻 Desarrollado por {OWNER_USER}"
+    await msg.edit_text(texto, parse_mode="Markdown")
+
 # ======== MAIN ========
 def main():
     init_db()
@@ -712,6 +836,7 @@ def main():
     application.add_handler(CommandHandler("nequi", comando_nequi))
     application.add_handler(CommandHandler("llave", comando_llave))
     application.add_handler(CommandHandler("placa", comando_placa))
+    application.add_handler(CommandHandler("sisben", comando_sisben))
     application.add_handler(CommandHandler("addkey", comando_addkey))
     application.add_handler(CommandHandler("genkey", comando_genkey))
     application.add_handler(CommandHandler("redeem", comando_redeem))
@@ -737,4 +862,4 @@ if __name__ == "__main__":
     try:
         main()
     finally:
-        close_pool() 
+        close_pool()
