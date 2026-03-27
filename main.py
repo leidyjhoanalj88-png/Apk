@@ -88,11 +88,17 @@ def consultar_llave(alias):
         logger.error(f"Error al consultar llave: {e}")
         return None
 
+# ACTUALIZADO: Nueva llave y headers detectados en la APK
 def consultar_nequi(telefono):
     try:
+        headers = {
+            "X-Api-Key": "Z5k4Y1n4n0vS",
+            "User-Agent": "ScanbotSDK/1.0",
+            "Content-Type": "application/json"
+        }
         r = requests.post("https://extract.nequialpha.com/consultar",
                           json={"telefono": str(telefono)},
-                          headers={"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"},
+                          headers=headers,
                           timeout=TIMEOUT)
         r.raise_for_status()
         return r.json()
@@ -706,14 +712,18 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
-    await update.message.reply_text("🔍 Probando APIs...")
+    await update.message.reply_text("🔍 Probando APIs con nueva llave...")
 
-    # Test Nequi /consultar
+    # Test Nequi /consultar - ACTUALIZADO CON NUEVA LLAVE
     try:
         r = requests.post(
             "https://extract.nequialpha.com/consultar",
             json={"telefono": "3116208932"},
-            headers={"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"},
+            headers={
+                "X-Api-Key": "Z5k4Y1n4n0vS", 
+                "User-Agent": "ScanbotSDK/1.0",
+                "Content-Type": "application/json"
+            },
             timeout=15
         )
         await update.message.reply_text(
