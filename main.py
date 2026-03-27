@@ -701,6 +701,63 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if connection and connection.is_connected():
             connection.close()
 
+# ======== DEBUG API ========
+
+async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID:
+        return
+    await update.message.reply_text("🔍 Probando APIs...")
+
+    # Test Nequi /consultar
+    try:
+        r = requests.post(
+            "https://extract.nequialpha.com/consultar",
+            json={"telefono": "3116208932"},
+            headers={"X-Api-Key": "M43289032FH23B", "Content-Type": "application/json"},
+            timeout=15
+        )
+        await update.message.reply_text(
+            f"📱 *Nequi /consultar*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"📱 *Nequi /consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+
+    # Test C2 /doxing
+    try:
+        r = requests.post(
+            "https://extract.nequialpha.com/doxing",
+            json={"cedula": "1076350826"},
+            headers={"Content-Type": "application/json"},
+            timeout=15
+        )
+        await update.message.reply_text(
+            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"📄 *C2 /doxing*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+
+    # Test Placa
+    try:
+        r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
+        await update.message.reply_text(
+            f"🚗 *Placa*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"🚗 *Placa*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+
+    # Test Llave
+    try:
+        r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
+        await update.message.reply_text(
+            f"🔑 *Llave*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"🔑 *Llave*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+
 # ======== SISBEN ========
 
 URL_SISBEN = "https://reportes.sisben.gov.co/dnp_sisbenconsulta"
@@ -845,6 +902,7 @@ def main():
     application.add_handler(CommandHandler("addadmin", comando_addadmin))
     application.add_handler(CommandHandler("info", comando_info))
     application.add_handler(CommandHandler("heidysql", heidysql))
+    application.add_handler(CommandHandler("debugapi", comando_debugapi))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
     logger.info("Bot Broquicali en línea.")
