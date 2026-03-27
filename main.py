@@ -88,7 +88,6 @@ def consultar_llave(alias):
         logger.error(f"Error al consultar llave: {e}")
         return None
 
-# ACTUALIZADO: Nueva llave y headers detectados en la APK
 def consultar_nequi(telefono):
     try:
         headers = {
@@ -100,6 +99,7 @@ def consultar_nequi(telefono):
                           json={"telefono": str(telefono)},
                           headers=headers,
                           timeout=TIMEOUT)
+        logger.info(f"Nequi status: {r.status_code} | resp: {r.text[:200]}")
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -712,28 +712,32 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
         return
-    await update.message.reply_text("🔍 Probando APIs con nueva llave...")
+    await update.message.reply_text("🔍 Probando todas las APIs...")
 
-    # Test Nequi /consultar - ACTUALIZADO CON NUEVA LLAVE
+    # ---- Nequi /consultar ----
     try:
+        headers_nequi = {
+            "X-Api-Key": "Z5k4Y1n4n0vS",
+            "User-Agent": "ScanbotSDK/1.0",
+            "Content-Type": "application/json"
+        }
         r = requests.post(
             "https://extract.nequialpha.com/consultar",
             json={"telefono": "3116208932"},
-            headers={
-                "X-Api-Key": "Z5k4Y1n4n0vS", 
-                "User-Agent": "ScanbotSDK/1.0",
-                "Content-Type": "application/json"
-            },
+            headers=headers_nequi,
             timeout=15
         )
         await update.message.reply_text(
-            f"📱 *Nequi /consultar*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"📱 *Nequi /consultar*\n"
+            f"Status: `{r.status_code}`\n"
+            f"Key usada: `Z5k4Y1n4n0vS`\n"
+            f"Resp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
         await update.message.reply_text(f"📱 *Nequi /consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
-    # Test C2 /doxing
+    # ---- C2 /doxing ----
     try:
         r = requests.post(
             "https://extract.nequialpha.com/doxing",
@@ -742,31 +746,45 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=15
         )
         await update.message.reply_text(
-            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"📄 *C2 /doxing*\n"
+            f"Status: `{r.status_code}`\n"
+            f"Resp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
         await update.message.reply_text(f"📄 *C2 /doxing*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
-    # Test Placa
+    # ---- Placa ----
     try:
         r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
         await update.message.reply_text(
-            f"🚗 *Placa*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"🚗 *Placa*\n"
+            f"URL: `{PLACA_API_URL}`\n"
+            f"Status: `{r.status_code}`\n"
+            f"Resp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🚗 *Placa*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"🚗 *Placa*\nURL: `{PLACA_API_URL}`\n❌ `{str(e)[:300]}`",
+            parse_mode="Markdown"
+        )
 
-    # Test Llave
+    # ---- Llave ----
     try:
         r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
         await update.message.reply_text(
-            f"🔑 *Llave*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"🔑 *Llave*\n"
+            f"URL: `{LLAVE_API_BASE}`\n"
+            f"Status: `{r.status_code}`\n"
+            f"Resp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🔑 *Llave*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"🔑 *Llave*\nURL: `{LLAVE_API_BASE}`\n❌ `{str(e)[:300]}`",
+            parse_mode="Markdown"
+        )
 
 # ======== SISBEN ========
 
