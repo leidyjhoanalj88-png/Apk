@@ -1,4 +1,4 @@
-Import mysql.connector
+import mysql.connector
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 from mysql.connector import pooling
@@ -18,7 +18,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(name)
 httpx_logger = logging.getLogger("httpx")
 httpx_logger.setLevel(logging.WARNING)
 
@@ -116,7 +116,8 @@ def consultar_nequi_alpha(telefono):
         r = requests.post(
             NEQUI_ALPHA_URL,
             json={"telefono": str(telefono)},
-            headers=headers,
+
+headers=headers,
             timeout=TIMEOUT
         )
         logger.info(f"NequiAlpha status: {r.status_code} | resp: {r.text[:200]}")
@@ -337,7 +338,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /nequi   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
         "┃ ⚔️ /llave   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
-        "┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
+
+"┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
         "┃ ⚔️ /sisben  ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐒𝐈𝐒𝐁𝐄𝐍 𝐈𝐕\n"
         "┃ ⚔️ /redeem  ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
         "┃ ⚔️ /info    ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
@@ -411,14 +413,15 @@ async def comando_genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
                        (key, target_id, expiration))
         connection.commit()
         connection.close()
-        await update.message.reply_text(f"🔑 Key: `{key}`\nExpira: {expiration}", parse_mode="Markdown")
+        await update.message.reply_text(f"🔑 Key: {key}\nExpira: {expiration}", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
 async def comando_redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
+
+user_id = update.message.from_user.id
     if not context.args:
-        await update.message.reply_text("⚠️ Uso: `/redeem KEY-xxx`", parse_mode="Markdown")
+        await update.message.reply_text("⚠️ Uso: /redeem KEY-xxx", parse_mode="Markdown")
         return
     key = context.args[0]
     connection = None
@@ -459,9 +462,9 @@ async def comando_eliminar_key(update: Update, context: ContextTypes.DEFAULT_TYP
         cursor.execute("DELETE FROM user_keys WHERE key_value = %s", (key_value,))
         connection.commit()
         if cursor.rowcount > 0:
-            await update.message.reply_text(f"✅ Key `{key_value}` eliminada.", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ Key {key_value} eliminada.", parse_mode="Markdown")
         else:
-            await update.message.reply_text(f"❌ No se encontró la key `{key_value}`.", parse_mode="Markdown")
+            await update.message.reply_text(f"❌ No se encontró la key {key_value}.", parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
     finally:
@@ -494,7 +497,7 @@ async def comando_listkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
             estado = 'Sí' if clave['redeemed'] else 'No'
             usuario = f"@{clave['telegram_username']}" if clave['telegram_username'] else "Sin usuario"
             mensaje += (
-                f"🔑 `{clave['key_value']}`\n"
+                f"🔑 {clave['key_value']}\n"
                 f"👤 {usuario}\n"
                 f"⏳ Expira en: {dias} días\n"
                 f"✅ Redimida: {estado}\n\n"
@@ -569,22 +572,23 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lugar_elec = obtener_lugar(datos.get('LUGIdUbicacionElectoral'))
         lugar_prep = obtener_lugar(datos.get('LUGIdPreparacion'))
         msg = (
-            f"🪪 CC: `{datos.get('ANINuip')}`\n\n"
-            f"👤 Nombres: `{datos.get('ANINombre1')}` `{datos.get('ANINombre2') or ''}`\n"
-            f"👤 Apellidos: `{datos.get('ANIApellido1')}` `{datos.get('ANIApellido2') or ''}`\n"
-            f"👨 Padre: `{datos.get('ANINombresPadre') or 'No registra'}`\n"
-            f"👩 Madre: `{datos.get('ANINombresMadre') or 'No registra'}`\n"
-            f"📅 Nacimiento: `{datos.get('ANIFchNacimiento') or 'No registra'}`\n"
-            f"📅 Expedición: `{datos.get('ANIFchExpedicion') or 'No registra'}`\n"
-            f"🖇 Sexo: `{datos.get('ANISexo') or 'No registra'}`\n"
-            f"🔆 Estatura: `{datos.get('ANIEstatura') or 'No registra'}` cm\n"
-            f"🏚 Dirección: `{datos.get('ANIDireccion') or 'No registra'}`\n"
-            f"📱 Teléfono: `{datos.get('ANITelefono') or 'No registra'}`\n"
-            f"🌎 Nac.: `{lugar_nac or 'No encontrado'}`\n"
-            f"📍 Exp.: `{lugar_exp or 'No encontrado'}`\n"
-            f"🏠 Res.: `{lugar_res or 'No encontrado'}`\n"
-            f"🗳 Electoral: `{lugar_elec or 'No encontrado'}`\n"
-            f"🎓 Preparación: `{lugar_prep or 'No encontrado'}`\n\n"
+            f"🪪 CC: {datos.get('ANINuip')}\n\n"
+            f"👤 Nombres: {datos.get('ANINombre1')} {datos.get('ANINombre2') or ''}\n"
+            f"👤 Apellidos: {datos.get('ANIApellido1')} {datos.get('ANIApellido2') or ''}\n"
+            f"👨 Padre: {datos.get('ANINombresPadre') or 'No registra'}\n"
+            f"👩 Madre: {datos.get('ANINombresMadre') or 'No registra'}\n"
+            f"📅 Nacimiento: {datos.get('ANIFchNacimiento') or 'No registra'}\n"
+            f"📅 Expedición: {datos.get('ANIFchExpedicion') or 'No registra'}\n"
+            f"🖇 Sexo: {datos.get('ANISexo') or 'No registra'}\n"
+            f"🔆 Estatura: {datos.get('ANIEstatura') or 'No registra'} cm\n"
+            f"🏚 Dirección: {datos.get('ANIDireccion') or 'No registra'}\n"
+            f"📱 Teléfono: {datos.get('ANITelefono') or 'No registra'}\n"
+            f"🌎 Nac.: {lugar_nac or 'No encontrado'}\n"
+            f"📍 Exp.: {lugar_exp or 'No encontrado'}\n"
+            f"🏠 Res.: {lugar_res or 'No encontrado'}\n"
+
+f"🗳 Electoral: {lugar_elec or 'No encontrado'}\n"
+            f"🎓 Preparación: {lugar_prep or 'No encontrado'}\n\n"
             f"💻 Desarrollado por {OWNER_USER}"
         )
         await update.message.reply_text(msg, parse_mode="Markdown")
@@ -610,17 +614,17 @@ async def comando_nombres(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lugar_exp = obtener_lugar(dato.get('LUGIdExpedicion'))
             lugar_res = obtener_lugar(dato.get('LUGIdResidencia'))
             msg = (
-                f"🪪 CC: `{dato.get('ANINuip')}`\n"
-                f"👤 `{dato.get('ANINombre1')}` `{dato.get('ANINombre2') or ''}` "
-                f"`{dato.get('ANIApellido1')}` `{dato.get('ANIApellido2') or ''}`\n"
-                f"👨 Padre: `{dato.get('ANINombresPadre') or 'No registra'}`\n"
-                f"👩 Madre: `{dato.get('ANINombresMadre') or 'No registra'}`\n"
-                f"📅 Nac.: `{dato.get('ANIFchNacimiento') or 'No registra'}`\n"
-                f"🏚 Dir.: `{dato.get('ANIDireccion') or 'No registra'}`\n"
-                f"📱 Tel.: `{dato.get('ANITelefono') or 'No registra'}`\n"
-                f"🌎 Nac.: `{lugar_nac or 'No encontrado'}`\n"
-                f"📍 Exp.: `{lugar_exp or 'No encontrado'}`\n"
-                f"🏠 Res.: `{lugar_res or 'No encontrado'}`\n\n"
+                f"🪪 CC: {dato.get('ANINuip')}\n"
+                f"👤 {dato.get('ANINombre1')} {dato.get('ANINombre2') or ''} "
+                f"{dato.get('ANIApellido1')} {dato.get('ANIApellido2') or ''}\n"
+                f"👨 Padre: {dato.get('ANINombresPadre') or 'No registra'}\n"
+                f"👩 Madre: {dato.get('ANINombresMadre') or 'No registra'}\n"
+                f"📅 Nac.: {dato.get('ANIFchNacimiento') or 'No registra'}\n"
+                f"🏚 Dir.: {dato.get('ANIDireccion') or 'No registra'}\n"
+                f"📱 Tel.: {dato.get('ANITelefono') or 'No registra'}\n"
+                f"🌎 Nac.: {lugar_nac or 'No encontrado'}\n"
+                f"📍 Exp.: {lugar_exp or 'No encontrado'}\n"
+                f"🏠 Res.: {lugar_res or 'No encontrado'}\n\n"
                 f"💻 Desarrollado por {OWNER_USER}"
             )
             await update.message.reply_text(msg, parse_mode="Markdown")
@@ -654,97 +658,6 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if campo in d:
                     usados.add(campo)
                     bloque.append(f"• {campo.replace('_',' ').title()}: {clean(d.get(campo))}")
-            if bloque:
-                mensaje += f"{titulo}\n" + "\n".join(bloque) + "\n\n"
-        extras = [f"• {k.replace('_',' ').title()}: {clean(v)}" for k, v in d.items() if k not in usados]
-        if extras:
-            mensaje += "🧩 OTROS\n" + "\n".join(extras) + "\n\n"
-        mensaje += f"💻 Desarrollado por {OWNER_USER}"
-        await update.message.reply_text(mensaje)
-    except Exception as e:
-        logger.error(f"Error en /c2: {e}")
-        await update.message.reply_text("❌ Error al procesar la solicitud.")
-
-async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ Sin Key activa.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /nequi <telefono>")
-        return
-
-    telefono = context.args[0]
-    msg = await update.message.reply_text("🔍 Consultando Nequi...")
-
-    datos, fuente = consultar_nequi(telefono)
-
-    # Si fuente es un mensaje de error (string largo)
-    if datos is None:
-        await msg.edit_text(fuente)
-        return
-
-    # Normalizar campos según la fuente
-    nombre = datos.get("nombre_completo") or datos.get("nombre") or "No registra"
-    cedula = datos.get("cedula") or datos.get("documento") or "No registra"
-    municipio = datos.get("municipio") or "No registra"
-    telefono_resp = datos.get("telefono") or telefono
-    db_val = datos.get("db")
-    db_str = "Sí" if db_val else "No"
-    fuente_label = "🔵 Colzia" if fuente == "colzia" else "🟡 NequiAlpha"
-
-    mensaje = (
-        f"📱 *Consulta Nequi* {fuente_label}\n"
-        f"══════════════════════\n"
-        f"📞 Teléfono: `{telefono_resp}`\n"
-        f"👤 Nombre: `{nombre}`\n"
-        f"🆔 Cédula: `{cedula}`\n"
-        f"📍 Municipio: `{municipio}`\n"
-        f"🗄️ DB: `{db_str}`\n"
-        f"══════════════════════\n"
-        f"💻 Desarrollado por {OWNER_USER}"
-    )
-    await msg.edit_text(mensaje, parse_mode="Markdown")
-
-async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ Sin Key activa.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /llave <alias>")
-        return
-    alias = context.args[0]
-    try:
-        res = consultar_llave(alias)
-        if (res is None or res == "null") and alias.startswith("@"):
-            res = consultar_llave(alias[1:])
-        mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
-        await update.message.reply_text(f"```json\n{mensaje_json}\n```", parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error en /llave: {e}")
-        await update.message.reply_text("❌ Error al procesar la solicitud.")
-
-async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not tiene_key_valida(update.message.from_user.id):
-        await update.message.reply_text("❌ Sin Key activa.")
-        return
-    if not context.args:
-        await update.message.reply_text("📌 Uso: /placa <placa>")
-        return
-    try:
-        res = consultar_placa(context.args[0].upper())
-        mensaje_json = json.dumps(res, indent=2, ensure_ascii=False)
-        if len(mensaje_json) > 4000:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
-                f.write(mensaje_json)
-                temp_file = f.name
-            with open(temp_file, 'rb') as f:
-                await update.message.reply_document(document=f, filename=f"placa_{context.args[0]}.txt")
-            os.remove(temp_file)
-        else:
-            await update.message.reply_text(f"```json\n{mensaje_json}\n```", parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error en /placa: {e}")
-        await update.message.reply_text("❌ Error al procesar la solicitud.")
 
 async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
@@ -771,9 +684,9 @@ async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(path_ejecucion)
         respuesta = "🚀 Resultado\n\n"
         if resultado.stdout:
-            respuesta += f"📝 Salida:\n`{resultado.stdout[:1000]}`\n"
+            respuesta += f"📝 Salida:\n{resultado.stdout[:1000]}\n"
         if resultado.stderr:
-            respuesta += f"⚠️ Errores:\n`{resultado.stderr[:1000]}`"
+            respuesta += f"⚠️ Errores:\n{resultado.stderr[:1000]}"
         if not resultado.stdout and not resultado.stderr:
             respuesta += "✨ Pool reorganizada correctamente."
         await update.message.reply_text(respuesta, parse_mode="Markdown")
@@ -818,16 +731,16 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             headers=headers_colzia,
             timeout=15
         )
-        token_estado = f"`{COLZIA_BEARER_TOKEN[:20]}...`" if COLZIA_BEARER_TOKEN else "VACÍO ❌"
+        token_estado = f"{COLZIA_BEARER_TOKEN[:20]}..." if COLZIA_BEARER_TOKEN else "VACÍO ❌"
         await update.message.reply_text(
             f"🌐 *Colzia /api/consultar*\n"
-            f"Status: `{r.status_code}`\n"
+            f"Status: {r.status_code}\n"
             f"Token: {token_estado}\n"
-            f"Resp: `{r.text[:400]}`",
+            f"Resp: {r.text[:400]}",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🌐 *Colzia*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"🌐 *Colzia*\n❌ {str(e)[:300]}", parse_mode="Markdown")
 
     # ---- NequiAlpha ----
     try:
@@ -835,7 +748,8 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "X-Api-Key": NEQUI_ALPHA_KEY,
             "User-Agent": "ScanbotSDK/1.0",
             "Content-Type": "application/json"
-        }
+
+}
         r = requests.post(
             NEQUI_ALPHA_URL,
             json={"telefono": "3116208932"},
@@ -844,12 +758,12 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(
             f"📱 *NequiAlpha /consultar*\n"
-            f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:400]}`",
+            f"Status: {r.status_code}\n"
+            f"Resp: {r.text[:400]}",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"📱 *NequiAlpha*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"📱 *NequiAlpha*\n❌ {str(e)[:300]}", parse_mode="Markdown")
 
     # ---- C2 /doxing ----
     try:
@@ -860,31 +774,31 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=15
         )
         await update.message.reply_text(
-            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"📄 *C2 /doxing*\nStatus: {r.status_code}\nResp: {r.text[:400]}",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"📄 *C2 /doxing*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"📄 *C2 /doxing*\n❌ {str(e)[:300]}", parse_mode="Markdown")
 
     # ---- Placa ----
     try:
         r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
         await update.message.reply_text(
-            f"🚗 *Placa*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"🚗 *Placa*\nStatus: {r.status_code}\nResp: {r.text[:400]}",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🚗 *Placa*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"🚗 *Placa*\n❌ {str(e)[:300]}", parse_mode="Markdown")
 
     # ---- Llave ----
     try:
         r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
         await update.message.reply_text(
-            f"🔑 *Llave*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
+            f"🔑 *Llave*\nStatus: {r.status_code}\nResp: {r.text[:400]}",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🔑 *Llave*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"🔑 *Llave*\n❌ {str(e)[:300]}", parse_mode="Markdown")
 
 # ======== SISBEN ========
 
@@ -937,7 +851,8 @@ def consultar_sisben(tipo, numero):
 
 def _extraer_sisben(html):
     if "no se encontr" in html.lower():
-        return None
+
+return None
     if "Registro válido" not in html and "DATOS PERSONALES" not in html:
         return None
     soup = BeautifulSoup(html, "html.parser")
@@ -970,7 +885,7 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         tipos = "\n".join([f"  {k} - {v}" for k, v in TIPOS_DOC_SISBEN.items()])
         await update.message.reply_text(
-            f"📌 Uso: /sisben <tipo> <documento>\n\nTipos:\n{tipos}\n\nEjemplo: `/sisben 3 1000000000`",
+            f"📌 Uso: /sisben <tipo> <documento>\n\nTipos:\n{tipos}\n\nEjemplo: /sisben 3 1000000000",
             parse_mode="Markdown"
         )
         return
@@ -981,7 +896,7 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     tipo_nombre = TIPOS_DOC_SISBEN[tipo]
     msg = await update.message.reply_text(
-        f"🔍 Consultando SISBEN IV...\n⚔️ Tipo: {tipo_nombre}\n⚔️ Doc: `{numero}`",
+        f"🔍 Consultando SISBEN IV...\n⚔️ Tipo: {tipo_nombre}\n⚔️ Doc: {numero}",
         parse_mode="Markdown"
     )
     resultado = consultar_sisben(tipo, numero)
@@ -1024,7 +939,8 @@ def main():
     application.add_handler(CommandHandler("placa", comando_placa))
     application.add_handler(CommandHandler("sisben", comando_sisben))
     application.add_handler(CommandHandler("addkey", comando_addkey))
-    application.add_handler(CommandHandler("genkey", comando_genkey))
+
+application.add_handler(CommandHandler("genkey", comando_genkey))
     application.add_handler(CommandHandler("redeem", comando_redeem))
     application.add_handler(CommandHandler("eliminar_key", comando_eliminar_key))
     application.add_handler(CommandHandler("listkey", comando_listkey))
@@ -1044,10 +960,9 @@ def close_pool():
     except Exception as e:
         logger.error(f"Error al cerrar pool: {e}")
 
-if __name__ == "__main__":
+if name == "main":
     logger.info("Iniciando bot.")
     try:
         main()
     finally:
         close_pool()
- 
