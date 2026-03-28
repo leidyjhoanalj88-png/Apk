@@ -52,22 +52,37 @@ START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da8204
 TIMEOUT = 120
 
 # ======== CONFIG API COLZIA (ios.colzia.cc) ========
-# Encontrado en: https://nequi-ios.vercel.app/assets/index-C9As8hs8.js
-# Endpoints disponibles:
-#   POST /api/consultar     → {"telefono": "..."}
-#   POST /api/nombres/me    → datos del usuario
-#   POST /api/validate-phone
-#   GET  /bolsillos
-#   GET  /comprobante/
-# Autenticación: Authorization: Bearer <token>
-# Token se obtiene desde Firebase: nequioos.firebaseapp.com
+# Cómo obtener el token:
+#   1. Abre https://nequi-ios.vercel.app en Chrome
+#   2. F12 → Network → haz una consulta
+#   3. Busca request a ios.colzia.cc → copia header Authorization: Bearer xxxxx
+#   4. Agrega en Railway: COLZIA_BEARER_TOKEN=xxxxx
+# El token expira cada cierto tiempo — cuando veas 401 repite el proceso.
 COLZIA_BASE_URL = "https://ios.colzia.cc"
-COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")  # ← poner token cuando se consiga
+COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")
+
+# ======== CONFIG NEQUI ALPHA (fallback) ========
+NEQUI_ALPHA_URL = "https://extract.nequialpha.com/consultar"
+NEQUI_ALPHA_KEY = os.getenv("NEQUI_ALPHA_KEY", "Z5k4Y1n4n0vS")
+
+# ======== UTILS ========
+
+def clean(value):
+    if value is None or value == "" or value == "null":
+        return "No registra"
+    if isinstance(value, bool):
+        return "Sí" if value else "No"
+    return str(value)
+
+# ======== NEQUI — Colzia + fallback ========
 
 def consultar_nequi_colzia(telefono):
-    """Consulta Nequi via API colzia. Requiere Bearer token."""
+    """
+    Consulta Nequi via API Colzia.
+    Retorna: dict con datos | None si falla | "TOKEN_VACIO" | "TOKEN_INVALIDO"
+    """
     if not COLZIA_BEARER_TOKEN:
-        return None
+        return "TOKEN_VACIO"
     try:
         headers = {
             "Authorization": f"Bearer {COLZIA_BEARER_TOKEN}",
@@ -79,21 +94,66 @@ def consultar_nequi_colzia(telefono):
             headers=headers,
             timeout=15
         )
-        logger.info(f"Colzia Nequi status: {r.status_code} | resp: {r.text[:200]}")
+        logger.info(f"Colzia status: {r.status_code} | resp: {r.text[:200]}")
+        if r.status_code == 401:
+            return "TOKEN_INVALIDO"
+        if r.status_code == 404:
+            return None
         r.raise_for_status()
         return r.json()
     except Exception as e:
         logger.error(f"Error consultar_nequi_colzia: {e}")
         return None
 
-# ======== UTILS ========
+def consultar_nequi_alpha(telefono):
+    """Fallback: Nequi Alpha con X-Api-Key."""
+    try:
+        headers = {
+            "X-Api-Key": NEQUI_ALPHA_KEY,
+            "User-Agent": "ScanbotSDK/1.0",
+            "Content-Type": "application/json"
+        }
+        r = requests.post(
+            NEQUI_ALPHA_URL,
+            json={"telefono": str(telefono)},
+            headers=headers,
+            timeout=TIMEOUT
+        )
+        logger.info(f"NequiAlpha status: {r.status_code} | resp: {r.text[:200]}")
+        if r.status_code in (401, 403):
+            return "KEY_INVALIDA"
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error consultar_nequi_alpha: {e}")
+        return None
 
-def clean(value):
-    if value is None or value == "" or value == "null":
-        return "No registra"
-    if isinstance(value, bool):
-        return "Sí" if value else "No"
-    return str(value)
+def consultar_nequi(telefono):
+    """
+    Intenta Colzia primero, luego fallback a NequiAlpha.
+    Retorna: (datos_dict, fuente) | (None, mensaje_error)
+    """
+    # — Intentar Colzia —
+    res_colzia = consultar_nequi_colzia(telefono)
+
+    if res_colzia == "TOKEN_VACIO":
+        logger.info("Colzia sin token, usando NequiAlpha...")
+    elif res_colzia == "TOKEN_INVALIDO":
+        logger.warning("Token Colzia expirado/inválido, usando NequiAlpha...")
+    elif res_colzia is not None:
+        return (res_colzia, "colzia")
+
+    # — Fallback NequiAlpha —
+    res_alpha = consultar_nequi_alpha(telefono)
+    if res_alpha == "KEY_INVALIDA":
+        return (None, "❌ Ambas APIs de Nequi están caídas o con credenciales inválidas.\n"
+                      "Consigue un nuevo token Colzia en: https://nequi-ios.vercel.app")
+    if res_alpha:
+        return (res_alpha, "nequialpha")
+
+    return (None, "❌ No se obtuvo respuesta de ninguna API de Nequi.")
+
+# ======== OTRAS APIs ========
 
 def consultar_cedula_c2(cedula):
     try:
@@ -121,30 +181,6 @@ def consultar_llave(alias):
         return r.json()
     except Exception as e:
         logger.error(f"Error al consultar llave: {e}")
-        return None
-
-def consultar_nequi(telefono):
-    # Primero intentar con API colzia (ios.colzia.cc)
-    if COLZIA_BEARER_TOKEN:
-        res = consultar_nequi_colzia(telefono)
-        if res:
-            return res
-    # Fallback: API nequialpha
-    try:
-        headers = {
-            "X-Api-Key": "Z5k4Y1n4n0vS",
-            "User-Agent": "ScanbotSDK/1.0",
-            "Content-Type": "application/json"
-        }
-        r = requests.post("https://extract.nequialpha.com/consultar",
-                          json={"telefono": str(telefono)},
-                          headers=headers,
-                          timeout=TIMEOUT)
-        logger.info(f"Nequi status: {r.status_code} | resp: {r.text[:200]}")
-        r.raise_for_status()
-        return r.json()
-    except Exception as e:
-        logger.error(f"Error al consultar Nequi: {e}")
         return None
 
 # ======== FUNCIONES BD ========
@@ -287,6 +323,7 @@ def init_db():
 # ======== COMANDOS ========
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    estado_colzia = "✅ Configurado" if COLZIA_BEARER_TOKEN else "⚠️ Sin token"
     texto = (
         "乄 𝐁𝐑𝐎𝐐𝐔𝐈 𝗠𝗘𝗡𝗨 ⚔️\n"
         "═════════════════════════\n"
@@ -294,17 +331,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         f"┃ ⚙️ 𝐁𝐨𝐭: {BOT_USER}\n"
-        "┃ ⚔️ /start ➛ 𝐌𝐄𝐍𝐔 𝐏𝐑𝐈𝐍𝐂𝐈𝐏𝐀𝐋\n"
-        "┃ ⚔️ /cc ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯1\n"
-        "┃ ⚔️ /c2 ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯2\n"
-        "┃ ⚔️ /nequi ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
-        "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
-        "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
+        "┃ ⚔️ /start   ➛ 𝐌𝐄𝐍𝐔 𝐏𝐑𝐈𝐍𝐂𝐈𝐏𝐀𝐋\n"
+        "┃ ⚔️ /cc      ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯1\n"
+        "┃ ⚔️ /c2      ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯2\n"
+        "┃ ⚔️ /nequi   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
+        "┃ ⚔️ /llave   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
+        "┃ ⚔️ /placa   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
         "┃ ⚔️ /nombres ➛ 𝐁𝐔𝐒𝐂𝐀𝐑 𝐏𝐎𝐑 𝐍𝐎𝐌𝐁𝐑𝐄\n"
-        "┃ ⚔️ /sisben ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐒𝐈𝐒𝐁𝐄𝐍 𝐈𝐕\n"
-        "┃ ⚔️ /redeem ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
-        "┃ ⚔️ /info ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
-        "┃ ⚔️ /help ➛ 𝐀𝐘𝐔𝐃𝐀\n"
+        "┃ ⚔️ /sisben  ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐒𝐈𝐒𝐁𝐄𝐍 𝐈𝐕\n"
+        "┃ ⚔️ /redeem  ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
+        "┃ ⚔️ /info    ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
+        "┃ ⚔️ /help    ➛ 𝐀𝐘𝐔𝐃𝐀\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
         "⚠️ 𝐂𝐚𝐝𝐚 𝐎𝐫𝐝𝐞𝐧 𝐄𝐣𝐞𝐜𝐮𝐭𝐚𝐝𝐚 𝐝𝐞𝐣𝐚 𝐜𝐢𝐜𝐚𝐭𝐫𝐢𝐜𝐞𝐬...𝐔𝐬𝐚𝐥𝐨 𝐜𝐨𝐧 𝐫𝐞𝐬𝐩𝐨𝐧𝐬𝐚𝐛𝐢𝐥𝐢𝐝𝐚𝐝 𝐨 𝐬𝐞𝐫𝐚𝐬 𝐝𝐞𝐛𝐨𝐫𝐚𝐝𝐨.\n"
         "═════════════════════════\n"
@@ -322,7 +359,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>🪪 /cc</b> [cedula] - Consulta por cédula v1\n\n"
         "<b>📄 /c2</b> [documento] - Consulta por cédula v2\n\n"
         "<b>👤 /nombres</b> [nombre apellido1 apellido2] - Buscar por nombre\n\n"
-        "<b>📱 /nequi</b> [telefono] - Consulta Nequi\n\n"
+        "<b>📱 /nequi</b> [telefono] - Consulta Nequi (Colzia + fallback)\n\n"
         "<b>🔑 /llave</b> [alias] - Consulta alias\n\n"
         "<b>🚗 /placa</b> [placa] - Consulta placa\n\n"
         "<b>📊 /sisben</b> [tipo] [documento] - Consulta SISBEN IV\n\n"
@@ -543,9 +580,9 @@ async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔆 Estatura: `{datos.get('ANIEstatura') or 'No registra'}` cm\n"
             f"🏚 Dirección: `{datos.get('ANIDireccion') or 'No registra'}`\n"
             f"📱 Teléfono: `{datos.get('ANITelefono') or 'No registra'}`\n"
-            f"💻 Nac.: `{lugar_nac or 'No encontrado'}`\n"
-            f"💻 Exp.: `{lugar_exp or 'No encontrado'}`\n"
-            f"💻 Res.: `{lugar_res or 'No encontrado'}`\n"
+            f"🌎 Nac.: `{lugar_nac or 'No encontrado'}`\n"
+            f"📍 Exp.: `{lugar_exp or 'No encontrado'}`\n"
+            f"🏠 Res.: `{lugar_res or 'No encontrado'}`\n"
             f"🗳 Electoral: `{lugar_elec or 'No encontrado'}`\n"
             f"🎓 Preparación: `{lugar_prep or 'No encontrado'}`\n\n"
             f"💻 Desarrollado por {OWNER_USER}"
@@ -581,9 +618,9 @@ async def comando_nombres(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📅 Nac.: `{dato.get('ANIFchNacimiento') or 'No registra'}`\n"
                 f"🏚 Dir.: `{dato.get('ANIDireccion') or 'No registra'}`\n"
                 f"📱 Tel.: `{dato.get('ANITelefono') or 'No registra'}`\n"
-                f"💻 Nac.: `{lugar_nac or 'No encontrado'}`\n"
-                f"💻 Exp.: `{lugar_exp or 'No encontrado'}`\n"
-                f"💻 Res.: `{lugar_res or 'No encontrado'}`\n\n"
+                f"🌎 Nac.: `{lugar_nac or 'No encontrado'}`\n"
+                f"📍 Exp.: `{lugar_exp or 'No encontrado'}`\n"
+                f"🏠 Res.: `{lugar_res or 'No encontrado'}`\n\n"
                 f"💻 Desarrollado por {OWNER_USER}"
             )
             await update.message.reply_text(msg, parse_mode="Markdown")
@@ -635,24 +672,38 @@ async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("📌 Uso: /nequi <telefono>")
         return
-    try:
-        res = consultar_nequi(context.args[0])
-        if not res:
-            await update.message.reply_text("❌ No se obtuvo respuesta de la API.")
-            return
-        mensaje = (
-            f"🔎 Resultado /nequi\n\n"
-            f"📱 Teléfono: {res.get('telefono') or 'No registra'}\n"
-            f"🆔 Cédula: {res.get('cedula') or 'No registra'}\n"
-            f"👤 Nombre: {res.get('nombre_completo') or 'No registra'}\n"
-            f"📍 Municipio: {res.get('municipio') or 'No registra'}\n"
-            f"🗄️ DB: {'Sí' if res.get('db') else 'No'}\n\n"
-            f"💻 Desarrollado por {OWNER_USER}"
-        )
-        await update.message.reply_text(mensaje)
-    except Exception as e:
-        logger.error(f"Error en /nequi: {e}")
-        await update.message.reply_text("❌ Error al procesar la solicitud.")
+
+    telefono = context.args[0]
+    msg = await update.message.reply_text("🔍 Consultando Nequi...")
+
+    datos, fuente = consultar_nequi(telefono)
+
+    # Si fuente es un mensaje de error (string largo)
+    if datos is None:
+        await msg.edit_text(fuente)
+        return
+
+    # Normalizar campos según la fuente
+    nombre = datos.get("nombre_completo") or datos.get("nombre") or "No registra"
+    cedula = datos.get("cedula") or datos.get("documento") or "No registra"
+    municipio = datos.get("municipio") or "No registra"
+    telefono_resp = datos.get("telefono") or telefono
+    db_val = datos.get("db")
+    db_str = "Sí" if db_val else "No"
+    fuente_label = "🔵 Colzia" if fuente == "colzia" else "🟡 NequiAlpha"
+
+    mensaje = (
+        f"📱 *Consulta Nequi* {fuente_label}\n"
+        f"══════════════════════\n"
+        f"📞 Teléfono: `{telefono_resp}`\n"
+        f"👤 Nombre: `{nombre}`\n"
+        f"🆔 Cédula: `{cedula}`\n"
+        f"📍 Municipio: `{municipio}`\n"
+        f"🗄️ DB: `{db_str}`\n"
+        f"══════════════════════\n"
+        f"💻 Desarrollado por {OWNER_USER}"
+    )
+    await msg.edit_text(mensaje, parse_mode="Markdown")
 
 async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
@@ -755,7 +806,7 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("🔍 Probando todas las APIs...")
 
-    # ---- Colzia /api/consultar ----
+    # ---- Colzia ----
     try:
         headers_colzia = {
             "Authorization": f"Bearer {COLZIA_BEARER_TOKEN}",
@@ -767,48 +818,49 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             headers=headers_colzia,
             timeout=15
         )
+        token_estado = f"`{COLZIA_BEARER_TOKEN[:20]}...`" if COLZIA_BEARER_TOKEN else "VACÍO ❌"
         await update.message.reply_text(
             f"🌐 *Colzia /api/consultar*\n"
             f"Status: `{r.status_code}`\n"
-            f"Token: `{'Configurado' if COLZIA_BEARER_TOKEN else 'VACÍO ❌'}`\n"
-            f"Resp: `{r.text[:500]}`",
+            f"Token: {token_estado}\n"
+            f"Resp: `{r.text[:400]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"🌐 *Colzia /api/consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"🌐 *Colzia*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
-    # ---- Nequi /consultar ----
+    # ---- NequiAlpha ----
     try:
         headers_nequi = {
-            "X-Api-Key": "Z5k4Y1n4n0vS",
+            "X-Api-Key": NEQUI_ALPHA_KEY,
             "User-Agent": "ScanbotSDK/1.0",
             "Content-Type": "application/json"
         }
         r = requests.post(
-            "https://extract.nequialpha.com/consultar",
+            NEQUI_ALPHA_URL,
             json={"telefono": "3116208932"},
             headers=headers_nequi,
             timeout=15
         )
         await update.message.reply_text(
-            f"📱 *Nequi /consultar*\n"
+            f"📱 *NequiAlpha /consultar*\n"
             f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:500]}`",
+            f"Resp: `{r.text[:400]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(f"📱 *Nequi /consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+        await update.message.reply_text(f"📱 *NequiAlpha*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
     # ---- C2 /doxing ----
     try:
         r = requests.post(
-            "https://extract.nequialpha.com/doxing",
+            API_URL_C2,
             json={"cedula": "1076350826"},
             headers={"Content-Type": "application/json"},
             timeout=15
         )
         await update.message.reply_text(
-            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
+            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -818,7 +870,7 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
         await update.message.reply_text(
-            f"🚗 *Placa*\nURL: `{PLACA_API_URL}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
+            f"🚗 *Placa*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -828,7 +880,7 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
         await update.message.reply_text(
-            f"🔑 *Llave*\nURL: `{LLAVE_API_BASE}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
+            f"🔑 *Llave*\nStatus: `{r.status_code}`\nResp: `{r.text[:400]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -957,6 +1009,7 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.edit_text(texto, parse_mode="Markdown")
 
 # ======== MAIN ========
+
 def main():
     init_db()
     application = Application.builder().token(TOKEN).build()
