@@ -5,80 +5,73 @@ from mysql.connector import pooling
 import logging
 import random
 import string
+from datetime import datetime, timedelta
 import os
+import subprocess
+import tempfile
 import requests
 import json
-import tempfile
-import subprocess
-import time
-from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
 
-# Configuración de Logging
+# ================= CONFIGURACIÓN DE LOGGING =================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ======== CONFIGURACIÓN DE ENTORNO ========
-DB_HOST = os.getenv("DB_HOST", "mysql.railway.internal")
-DB_USER = os.getenv("DB_USER", "root")
-DB_PASS = os.getenv("DB_PASSWORD", "nabo94nabo94")
-DB_NAME = os.getenv("DB_NAME", "ani")
-DB_PORT = os.getenv("DB_PORT", "3306")
-TOKEN = os.getenv("TELEGRAM_TOKEN", "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU")
-
+# ================ CONFIGURACIÓN DE IDENTIDAD (BROQUICALIFOXX) ================
+OWNER_ID = 8114050673 
 OWNER_USER = "@Broquicalifoxx"
 BOT_USER = "@doxeos09bot"
-OWNER_ID = 8114050673
+TOKEN = "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU"
+START_IMAGE_URL = "https://i.postimg.cc/xTbPbYFN/photo-2026-01-29-18-20-26.jpg"
 
-# ======== POOL DE CONEXIONES MYSQL ========
+# ================ CONFIGURACIÓN DE APIS =====================
+API_URL_C2 = "https://extract.nequialpha.com/doxing"
+PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
+LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
+NEQUI_API_URL = "https://extract.nequialpha.com/consultar"
+TIMEOUT = 120
+
+# ================ POOL DE CONEXIONES MYSQL =================
 pool = mysql.connector.pooling.MySQLConnectionPool(
     pool_name="pool_db",
-    pool_size=15, # Aumentado para mayor tráfico
-    host=DB_HOST,
-    user=DB_USER,
-    password=DB_PASS,
-    database=DB_NAME,
-    port=int(DB_PORT),
+    pool_size=15,
+    host="localhost", # O mysql.railway.internal si usas Railway
+    user="root",
+    password="nabo94nabo94",
+    database="ani",
     charset="utf8"
 )
 
-# APIs EXTERNAS
-COLZIA_BASE_URL = "https://ios.colzia.cc"
-COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")
-NEQUI_ALPHA_URL = "https://extract.nequialpha.com/consultar"
-NEQUI_ALPHA_KEY = os.getenv("NEQUI_ALPHA_KEY", "Z5k4Y1n4n0vS")
-START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
+# ================== NÚCLEO DE FUNCIONES ===================
 
-# ======== FUNCIONES DE BASE DE DATOS (ANI) ========
-
-def buscar_cedula_local(cedula):
-    connection = None
+def db_query(query, params=(), fetchone=False, commit=False):
+    conn = None
     try:
-        connection = pool.get_connection()
-        cursor = connection.cursor(dictionary=True)
-        query = "SELECT * FROM ani WHERE ANINuip = %s LIMIT 1"
-        cursor.execute(query, (cedula,))
-        return cursor.fetchone()
+        conn = pool.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute(query, params)
+        if commit:
+            conn.commit()
+            return True
+        return cursor.fetchone() if fetchone else cursor.fetchall()
     except Exception as e:
-        logger.error(f"Error DB local: {e}")
+        logger.error(f"Error SQL: {e}")
         return None
     finally:
-        if connection and connection.is_connected():
-            connection.close()
+        if conn: conn.close()
 
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID: return True
-    conn = pool.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
-    res = cursor.fetchone()
-    conn.close()
-    return res is not None
+    query = "SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()"
+    return db_query(query, (user_id,), fetchone=True) is not None
 
-# ======== COMANDOS DEL BOT ========
+def clean(value):
+    if value is None or value == "" or value == "null": return "No registra"
+    return str(value)
+
+# ================== COMANDOS DEL BOT ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
@@ -87,63 +80,101 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚𝐥 𝐢𝐧𝐟𝐢𝐞𝐫𝐧𝐨 𝐝𝐢𝐠𝐢𝐭𝐚𝐥... ⚔️\n"
         "═════════════════════════\n"
         "┏━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-        f"┃ ⚔️ /cc      ➛ 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯1 (Local)\n"
-        "┃ ⚔️ /nequi   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
-        "┃ ⚔️ /sisben  ➛ 𝐒𝐈𝐒𝐁𝐄𝐍 𝐈𝐕\n"
+        "┃ ⚔️ /cc      ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯1\n"
+        "┃ ⚔️ /c2      ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯2\n"
+        "┃ ⚔️ /nequi   ➛ 𝐈𝐍𝐕𝐄𝐒𝐓𝐈𝐆𝐀 𝐋𝐎 𝐎𝐂𝐔𝐋𝐓𝐎 𝐯3\n"
+        "┃ ⚔️ /llave   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
+        "┃ ⚔️ /placa   ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
         "┃ ⚔️ /redeem  ➛ 𝐀𝐂𝐓𝐈𝐕𝐀𝐑 𝐊𝐄𝐘\n"
         "┃ ⚔️ /info    ➛ 𝐌𝐈 𝐒𝐔𝐒𝐂𝐑𝐈𝐏𝐂𝐈Ó𝐍\n"
         "┗━━━━━━━━━━━━━━━━━━━━━━━⩺\n"
-        f"👑 𝘿𝙚𝙨𝙖𝙧𝙧𝙤𝙡𝙡𝙖𝙙𝙤 𝙥𝙤𝙧: {OWNER_USER}"
+        f"👑 𝙤𝙬𝙣𝙚𝙧: {OWNER_USER}"
     )
-    try:
-        await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
-    except:
-        await update.message.reply_text(texto)
+    await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
 
 async def comando_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     if not tiene_key_valida(user_id):
-        await update.message.reply_text("❌ No tienes una Key activa. Contacta a @Broquicalifoxx")
+        await update.message.reply_text(f"❌ Sin suscripción activa. Contacta a {OWNER_USER}")
         return
-
     if not context.args:
         await update.message.reply_text("📌 Uso: /cc <cedula>")
         return
 
     cedula = context.args[0]
-    res = buscar_cedula_local(cedula)
+    res = db_query("SELECT * FROM ani WHERE ANINuip = %s LIMIT 1", (cedula,), fetchone=True)
     
     if res:
-        msg = (
-            f"🪪 *DATOS ENCONTRADOS* (Local)\n\n"
-            f"🆔 CC: `{res['ANINuip']}`\n"
-            f"👤 Nombre: {res['ANINombre1']} {res.get('ANINombre2','')}\n"
-            f"👤 Apellidos: {res['ANIApellido1']} {res.get('ANIApellido2','')}\n"
-            f"📅 Nacimiento: {res.get('ANIFchNacimiento','No registra')}\n"
-            f"🏚 Dirección: {res.get('ANIDireccion','No registra')}\n"
-            f"📱 Teléfono: {res.get('ANITelefono','No registra')}\n"
-            f"\n💻 Desarrollado por {OWNER_USER}"
-        )
+        msg = (f"🪪 **DATOS ENCONTRADOS**\n\n🆔 CC: `{res['ANINuip']}`\n"
+               f"👤 Nombre: `{res['ANINombre1']} {res.get('ANINombre2','')}`\n"
+               f"👤 Apellidos: `{res['ANIApellido1']} {res['ANIApellido2']}`\n"
+               f"🏠 Dirección: `{res.get('ANIDireccion','No registra')}`\n"
+               f"📱 Teléfono: `{res.get('ANITelefono','No registra')}`\n\n"
+               f"🛡 Creditos: {OWNER_USER}")
         await update.message.reply_text(msg, parse_mode="Markdown")
     else:
-        await update.message.reply_text("❌ No se encontró en la base de datos local.")
+        await update.message.reply_text("❌ No se encontraron datos en la DB local.")
 
-# [Aquí irían las demás funciones de Nequi y Sisben que ya tenemos configuradas]
+async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
+    
+    tel = context.args[0]
+    try:
+        r = requests.post(NEQUI_API_URL, json={"telefono": tel}, headers={"X-Api-Key": "M43289032FH23B"}, timeout=TIMEOUT)
+        d = r.json()
+        msg = (f"🔎 **RESULTADO NEQUI**\n\n"
+               f"📱 Teléfono: {d.get('telefono')}\n"
+               f"🆔 Cédula: {d.get('cedula')}\n"
+               f"👤 Nombre: {d.get('nombre_completo')}\n\n"
+               f"🔖 by {OWNER_USER}")
+        await update.message.reply_text(msg)
+    except:
+        await update.message.reply_text("❌ Error en API Nequi.")
+
+# ================== COMANDOS ADMIN (KEYS) ===================
+
+async def generar_key(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.from_user.id != OWNER_ID: return
+    if len(context.args) < 2:
+        await update.message.reply_text("📌 Uso: /generar_key <ID_User> <Dias>")
+        return
+
+    target_id = context.args[0]
+    dias = int(context.args[1])
+    key = "KEY-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
+    expira = datetime.now() + timedelta(days=dias)
+
+    db_query("INSERT INTO user_keys (key_value, user_id, expiration_date, redeemed) VALUES (%s, %s, %s, FALSE)", 
+             (key, target_id, expira), commit=True)
+    
+    await update.message.reply_text(f"🔑 **KEY GENERADA:** `{key}`\n📅 Expira en: {dias} días", parse_mode="Markdown")
+
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args: return
+    key = context.args[0]
+    user_id = update.message.from_user.id
+
+    check = db_query("SELECT key_id FROM user_keys WHERE key_value = %s AND redeemed = FALSE", (key,), fetchone=True)
+    if check:
+        db_query("UPDATE user_keys SET redeemed = TRUE, user_id = %s WHERE key_value = %s", (user_id, key), commit=True)
+        await update.message.reply_text("✅ ¡Suscripción activada con éxito!")
+    else:
+        await update.message.reply_text("❌ Key inválida, usada o expirada.")
+
+# ======================== MAIN ============================
 
 def main():
-    # Inicializar tablas si no existen
-    conn = pool.get_connection()
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS user_keys (user_id BIGINT PRIMARY KEY, redeemed BOOLEAN, expiration_date DATETIME, key_value VARCHAR(50))")
-    conn.commit()
-    conn.close()
-
     app = Application.builder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("cc", comando_cc))
-    # Agregar handlers para sisben, nequi, redeem, etc.
+    app.add_handler(CommandHandler("nequi", comando_nequi))
+    app.add_handler(CommandHandler("generar_key", generar_key))
+    app.add_handler(CommandHandler("redeem", redeem))
+    # Para comandos como /c2, /placa y /llave, sigue la misma estructura de llamadas API
 
-    print("🚀 Bot Broquicali iniciado con éxito")
+    print(f"🚀 Bot BROQUI activo con ID {OWNER_ID}")
     app.run_polling()
 
 if __name__ == "__main__":
