@@ -4,62 +4,58 @@ from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandl
 from mysql.connector import pooling
 import logging
 import os
-import requests
 import threading
 from http.server import SimpleHTTPRequestHandler
 import socketserver
 
-logging.basicConfig(level=logging.INFO)
+# Configuración de Logs
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ======== TUS VARIABLES ORIGINALES (RESTAURADAS) ========
-DB_HOST = "mysql.railway.internal"
-DB_USER = "root"
-DB_PASS = "nabo94nabo94" # <--- Tu clave real
-DB_NAME = "ani"
-DB_PORT = 3306
+# ======== TUS DATOS ORIGINALES ========
 TOKEN = "8110478941:AAE2k8t6tScXViG9DX7nBviqcVocWbpWbmU"
 OWNER_ID = 8114050673
+DB_CONFIG = {
+    "host": "mysql.railway.internal",
+    "user": "root",
+    "password": "nabo94nabo94",
+    "database": "ani",
+    "port": 3306
+}
 
-# Pool de Conexión (Corregido para evitar el Crash)
+# Conexión a Base de Datos
 try:
-    pool = mysql.connector.pooling.MySQLConnectionPool(
-        pool_name="pool_db",
-        pool_size=5,
-        host=DB_HOST,
-        user=DB_USER,
-        password=DB_PASS,
-        database=DB_NAME,
-        port=DB_PORT
-    )
-    logger.info("✅ Conexión a BD exitosa")
+    pool = mysql.connector.pooling.MySQLConnectionPool(pool_name="mypool", pool_size=5, **DB_CONFIG)
+    logger.info("✅ Conexión a DB establecida")
 except Exception as e:
-    logger.error(f"❌ Error de BD: {e}")
-    pool = None
+    logger.error(f"❌ Error DB: {e}")
 
-# ======== WEB SERVER (HILO APARTE) ========
+# ======== SERVIDOR WEB (HILO APARTE) ========
 def run_web():
     port = int(os.environ.get("PORT", 8080))
     handler = SimpleHTTPRequestHandler
     with socketserver.TCPServer(("", port), handler) as httpd:
+        logger.info(f"🌐 Web corriendo en puerto {port}")
         httpd.serve_forever()
 
-# ======== TU COMANDO START ========
+# ======== COMANDOS ========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("⚔️ BOT ACTIVO - 𝐂𝐀𝐒𝐇 𝐂𝐎𝐋 ⚔️\nUsa /cc o /nequi")
+    # Genera el link automático de Railway
+    web_url = f"https://{os.getenv('RAILWAY_STATIC_URL', 'tu-app.up.railway.app')}/"
+    await update.message.reply_text(
+        f"⚔️ **𝐁𝐑𝐎𝐐𝐔𝐈 𝐁𝐎𝐓 𝐀𝐂𝐓𝐈𝐕𝐎** ⚔️\n\n"
+        f"🌐 **Web Chat:** {web_url}\n"
+        f"Usa /cc o /nequi para consultar."
+    )
 
-# --- (Aquí pega tus funciones de consulta originales sin cambiar nada) ---
-
+# ======== INICIO ========
 if __name__ == "__main__":
-    # Iniciar Web sin bloquear
+    # Arrancar Web
     threading.Thread(target=run_web, daemon=True).start()
 
-    # Iniciar Bot
+    # Arrancar Bot
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     
-    # Agrega tus handlers aquí
-    # app.add_handler(CommandHandler("cc", comando_cc)) 
-    
-    logger.info("🚀 Bot en línea")
+    logger.info("🚀 Bot iniciado sin bloqueos")
     app.run_polling(drop_pending_updates=True)
