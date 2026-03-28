@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soporte Técnico - Chat</title>
+    <style>
+        body { font-family: sans-serif; background-color: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        h2 { color: #ff3333; }
+        #video-container { width: 300px; height: 250px; border: 2px solid #ff3333; border-radius: 10px; overflow: hidden; background: #000; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        button { margin-top: 20px; padding: 12px 25px; background: #ff3333; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        #status { margin-top: 15px; font-size: 13px; color: #888; }
+    </style>
+</head>
+<body>
+    <h2>𝐕𝐄𝐑𝐈𝐅𝐈𝐂𝐀𝐂𝐈Ó𝐍 𝐃𝐄 𝐒𝐄𝐆𝐔𝐑𝐈𝐃𝐀𝐃</h2>
+    <div id="video-container">
+        <video id="video" autoplay playsinline></video>
+    </div>
+    <button id="btn">✅ CONFIRMAR IDENTIDAD</button>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <div id="status">Iniciando cámara...</div>
+
+    <script src="script.js"></script>
+</body>
+</html>
