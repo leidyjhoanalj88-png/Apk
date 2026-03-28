@@ -51,6 +51,41 @@ LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.
 START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
 TIMEOUT = 120
 
+# ======== CONFIG API COLZIA (ios.colzia.cc) ========
+# Encontrado en: https://nequi-ios.vercel.app/assets/index-C9As8hs8.js
+# Endpoints disponibles:
+#   POST /api/consultar     → {"telefono": "..."}
+#   POST /api/nombres/me    → datos del usuario
+#   POST /api/validate-phone
+#   GET  /bolsillos
+#   GET  /comprobante/
+# Autenticación: Authorization: Bearer <token>
+# Token se obtiene desde Firebase: nequioos.firebaseapp.com
+COLZIA_BASE_URL = "https://ios.colzia.cc"
+COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")  # ← poner token cuando se consiga
+
+def consultar_nequi_colzia(telefono):
+    """Consulta Nequi via API colzia. Requiere Bearer token."""
+    if not COLZIA_BEARER_TOKEN:
+        return None
+    try:
+        headers = {
+            "Authorization": f"Bearer {COLZIA_BEARER_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        r = requests.post(
+            f"{COLZIA_BASE_URL}/api/consultar",
+            json={"telefono": str(telefono)},
+            headers=headers,
+            timeout=15
+        )
+        logger.info(f"Colzia Nequi status: {r.status_code} | resp: {r.text[:200]}")
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error consultar_nequi_colzia: {e}")
+        return None
+
 # ======== UTILS ========
 
 def clean(value):
@@ -89,6 +124,12 @@ def consultar_llave(alias):
         return None
 
 def consultar_nequi(telefono):
+    # Primero intentar con API colzia (ios.colzia.cc)
+    if COLZIA_BEARER_TOKEN:
+        res = consultar_nequi_colzia(telefono)
+        if res:
+            return res
+    # Fallback: API nequialpha
     try:
         headers = {
             "X-Api-Key": "Z5k4Y1n4n0vS",
@@ -714,6 +755,28 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("🔍 Probando todas las APIs...")
 
+    # ---- Colzia /api/consultar ----
+    try:
+        headers_colzia = {
+            "Authorization": f"Bearer {COLZIA_BEARER_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        r = requests.post(
+            f"{COLZIA_BASE_URL}/api/consultar",
+            json={"telefono": "3116208932"},
+            headers=headers_colzia,
+            timeout=15
+        )
+        await update.message.reply_text(
+            f"🌐 *Colzia /api/consultar*\n"
+            f"Status: `{r.status_code}`\n"
+            f"Token: `{'Configurado' if COLZIA_BEARER_TOKEN else 'VACÍO ❌'}`\n"
+            f"Resp: `{r.text[:500]}`",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"🌐 *Colzia /api/consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
+
     # ---- Nequi /consultar ----
     try:
         headers_nequi = {
@@ -730,7 +793,6 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📱 *Nequi /consultar*\n"
             f"Status: `{r.status_code}`\n"
-            f"Key usada: `Z5k4Y1n4n0vS`\n"
             f"Resp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
@@ -746,9 +808,7 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
             timeout=15
         )
         await update.message.reply_text(
-            f"📄 *C2 /doxing*\n"
-            f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:500]}`",
+            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -758,33 +818,21 @@ async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
         await update.message.reply_text(
-            f"🚗 *Placa*\n"
-            f"URL: `{PLACA_API_URL}`\n"
-            f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:500]}`",
+            f"🚗 *Placa*\nURL: `{PLACA_API_URL}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(
-            f"🚗 *Placa*\nURL: `{PLACA_API_URL}`\n❌ `{str(e)[:300]}`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"🚗 *Placa*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
     # ---- Llave ----
     try:
         r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
         await update.message.reply_text(
-            f"🔑 *Llave*\n"
-            f"URL: `{LLAVE_API_BASE}`\n"
-            f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:500]}`",
+            f"🔑 *Llave*\nURL: `{LLAVE_API_BASE}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
             parse_mode="Markdown"
         )
     except Exception as e:
-        await update.message.reply_text(
-            f"🔑 *Llave*\nURL: `{LLAVE_API_BASE}`\n❌ `{str(e)[:300]}`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text(f"🔑 *Llave*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
 
 # ======== SISBEN ========
 
