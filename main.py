@@ -14,37 +14,37 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-# Cargar variables desde el archivo .env
+# Cargar variables de entorno
 load_dotenv()
 
-# Configuración de Logs
+# Logs
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ======== VARIABLES DESDE EL .ENV ========
+# ======== VARIABLES DEL .ENV ========
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "8114050673"))
 OWNER_USER = os.getenv("OWNER_USER", "@Broquicalifoxx")
 
 DB_HOST = os.getenv("DB_HOST")
 DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASSWORD") # Coincide con tu .env
+DB_PASS = os.getenv("DB_PASSWORD")
 DB_NAME = os.getenv("DB_NAME")
 DB_PORT = os.getenv("DB_PORT", "3306")
 
 API_URL_C2 = os.getenv("API_URL_C2", "https://extract.nequialpha.com/doxing")
 START_IMAGE_URL = os.getenv("START_IMAGE_URL")
-NEQUI_API_KEY = os.getenv("NEQUI_API_KEY")
 
-# APIs FIJAS (TryCloudflare)
+# APIs Externas
 PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
+LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
 API_DOX_EXTRANJERO = "https://par-bottles-straight-bernard.trycloudflare.com/hexn-dox-api"
 
-# ======== POOL DE BASE DE DATOS ========
+# ======== POOL DE BASE DE DATOS (REFORZADO) ========
 try:
     pool = mysql.connector.pooling.MySQLConnectionPool(
         pool_name="pool_db",
-        pool_size=5,
+        pool_size=10,
         host=DB_HOST,
         user=DB_USER,
         password=DB_PASS,
@@ -53,42 +53,52 @@ try:
         charset="utf8",
         connect_timeout=10
     )
-    logger.info("✅ Conexión al Pool exitosa.")
+    logger.info("✅ Pool de DB iniciado.")
 except Exception as e:
-    logger.error(f"⚠️ No se pudo conectar a la DB: {e}. El bot funcionará solo con APIs externas.")
+    logger.error(f"⚠️ Error DB: {e}")
     pool = None
 
 # ======== UTILS & SEGURIDAD ========
 
+def clean(value):
+    return str(value) if value and value != "null" else "No registra"
+
 def tiene_key_valida(user_id):
     if user_id == OWNER_ID: return True
     if not pool: return False
-    connection = None
     try:
         connection = pool.get_connection()
         cursor = connection.cursor(dictionary=True)
         cursor.execute("SELECT 1 FROM user_keys WHERE user_id = %s AND redeemed = TRUE AND expiration_date > NOW()", (user_id,))
         res = cursor.fetchone()
+        connection.close()
         return res is not None
     except: return False
-    finally:
-        if connection and connection.is_connected(): connection.close()
 
-def clean(value):
-    return str(value) if value and value != "null" else "No registra"
-
-# ======== FUNCIONES DE CONSULTA ========
+# ======== FUNCIONES DE CONSULTA (APIs) ========
 
 def consultar_extranjero(cedula):
     try:
-        r = requests.get(API_DOX_EXTRANJERO, params={"cc": str(cedula)}, timeout=15)
-        r.raise_for_status()
+        r = requests.get(API_DOX_EXTRANJERO, params={"cc": str(cedula)}, timeout=20)
         return r.json()
     except: return None
 
-def consultar_cedula_c2(cedula):
+def consultar_nequi(telefono):
     try:
-        r = requests.post(API_URL_C2, json={"cedula": str(cedula)}, timeout=15)
+        headers = {"X-Api-Key": "Z5k4Y1n4n0vS", "Content-Type": "application/json"}
+        r = requests.post("https://extract.nequialpha.com/consultar", json={"telefono": str(telefono)}, headers=headers, timeout=20)
+        return r.json()
+    except: return None
+
+def consultar_placa(placa):
+    try:
+        r = requests.get(PLACA_API_URL, params={"placa": placa.upper()}, timeout=20)
+        return r.json()
+    except: return None
+
+def consultar_llave(alias):
+    try:
+        r = requests.get(LLAVE_API_BASE, params={"hexn": alias}, timeout=20)
         return r.json()
     except: return None
 
@@ -96,20 +106,23 @@ def consultar_cedula_c2(cedula):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
-        "⚔️ **MENU PRINCIPAL** ⚔️\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "• /cc - Consulta Cédula v1\n"
-        "• /c2 - Consulta Cédula v2\n"
-        "• /ext - Consulta Extranjero\n"
-        "• /placa - Consulta Vehicular\n"
-        "• /info - Mi Suscripción\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
+        "乄 𝐁𝐑𝐎𝐐𝐔𝐈 𝐌𝐄𝐍𝐔 ⚔️\n"
+        "═════════════════════════\n"
+        "┃ ⚔️ /cc ➛ CÉDULA V1\n"
+        "┃ ⚔️ /c2 ➛ CÉDULA V2\n"
+        "┃ ⚔️ /ext ➛ EXTRANJERO\n"
+        "┃ ⚔️ /nequi ➛ NEQUI\n"
+        "┃ ⚔️ /llave ➛ ALIAS\n"
+        "┃ ⚔️ /placa ➛ PLACA\n"
+        "┃ ⚔️ /sisben ➛ SISBEN IV\n"
+        "┃ ⚔️ /info ➛ SUSCRIPCIÓN\n"
+        "═════════════════════════\n"
         f"👑 Owner: {OWNER_USER}"
     )
     if START_IMAGE_URL:
-        await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto, parse_mode="Markdown")
+        await update.message.reply_photo(photo=START_IMAGE_URL, caption=texto)
     else:
-        await update.message.reply_text(texto, parse_mode="Markdown")
+        await update.message.reply_text(texto)
 
 async def comando_extranjero(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
@@ -120,49 +133,75 @@ async def comando_extranjero(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     
     cedula = context.args[0]
-    msg = await update.message.reply_text(f"🔎 Consultando base extranjera...")
-    
+    msg = await update.message.reply_text("🔎 Consultando base migratoria...")
     datos = consultar_extranjero(cedula)
+    
     if not datos or datos.get("Estado") != "OK":
-        await msg.edit_text("❌ No se encontró información.")
+        await msg.edit_text("❌ No se encontró información en esta base.")
         return
 
-    id_info = datos.get('IDENTIDAD', {})
-    respuesta = (
+    id_i = datos.get('IDENTIDAD', {})
+    res = (
         f"🇻🇪 **DATOS EXTRANJERO**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **Nombre:** `{id_info.get('Primer Nombre')} {id_info.get('Primer Apellido')}`\n"
-        f"🆔 **Documento:** `{datos.get('Documento')}`\n"
-        f"🎂 **Nacimiento:** `{id_info.get('Fecha Nacimiento')}`\n"
-        f"⚧ **Sexo:** `{id_info.get('Sexo')}`\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"💻 Desarrollado por {OWNER_USER}"
+        f"👤 **Nombre:** `{id_i.get('Primer Nombre')} {id_i.get('Primer Apellido')}`\n"
+        f"🆔 **Doc:** `{datos.get('Documento')}`\n"
+        f"🎂 **Nace:** `{id_i.get('Fecha Nacimiento')}`\n"
+        f"📍 **Origen:** `{datos.get('UBICACIÓN', {}).get('Pais Nacimiento')}`\n"
+        f"━━━━━━━━━━━━━━\n"
+        f"💻 {OWNER_USER}"
     )
-    await msg.edit_text(respuesta, parse_mode="Markdown")
+    await msg.edit_text(res, parse_mode="Markdown")
 
-async def info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    if user_id == OWNER_ID:
-        await update.message.reply_text("👑 Eres el Administrador Principal (Acceso Ilimitado).")
+async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /nequi <celular>")
         return
-    # Aquí iría la lógica de consulta a la DB si el pool está activo
-    await update.message.reply_text("ℹ️ Consulta tu estado con el administrador.")
+    res = consultar_nequi(context.args[0])
+    if res:
+        msg = f"📱 **NEQUI DATA**\n\n👤 `{res.get('nombre_completo')}`\n🆔 `{res.get('cedula')}`\n📍 `{res.get('municipio')}`"
+        await update.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text("❌ Sin respuesta.")
+
+async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
+    res = consultar_placa(context.args[0])
+    await update.message.reply_text(f"```json\n{json.dumps(res, indent=2, ensure_ascii=False)[:4000]}\n```", parse_mode="Markdown")
+
+async def comando_llave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
+    res = consultar_llave(context.args[0])
+    await update.message.reply_text(f"```json\n{json.dumps(res, indent=2, ensure_ascii=False)}\n```", parse_mode="Markdown")
+
+async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id): return
+    if not context.args: return
+    try:
+        r = requests.post(API_URL_C2, json={"cedula": context.args[0]}, timeout=20).json()
+        if r.get("success"):
+            d = r.get("data", {})
+            msg = f"📄 **DATOS C2**\n👤 {d.get('primer_nombre')} {d.get('primer_apellido')}\n📍 {d.get('municipio_residencia')}"
+            await update.message.reply_text(msg)
+        else:
+            await update.message.reply_text("❌ No encontrado.")
+    except: await update.message.reply_text("❌ Error API.")
 
 # ======== MAIN ========
 
 def main():
-    if not TOKEN:
-        print("❌ ERROR: No se encontró el TELEGRAM_TOKEN en el archivo .env")
-        return
-
     application = Application.builder().token(TOKEN).build()
 
-    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("ext", comando_extranjero))
-    application.add_handler(CommandHandler("info", info))
+    application.add_handler(CommandHandler("nequi", comando_nequi))
+    application.add_handler(CommandHandler("placa", comando_placa))
+    application.add_handler(CommandHandler("llave", comando_llave))
+    application.add_handler(CommandHandler("c2", comando_c2))
 
-    print("🚀 Bot iniciado correctamente...")
+    print("🚀 Bot Full activo en Render.")
     application.run_polling()
 
 if __name__ == "__main__":
