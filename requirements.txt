@@ -2,3 +2,4 @@ python-telegram-bot
 mysql-connector-python
 requests
 beautifulsoup4
+python-dotenv
